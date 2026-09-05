@@ -1,0 +1,211 @@
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #1f2937;
+  background-color: #f5f6f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background-color: #f5f6f8;
+}
+
+/* ------------------------------
+   App Shell
+------------------------------ */
+
+.app-shell {
+  min-height: 100vh;
+}
+
+/* ------------------------------
+   Header
+------------------------------ */
+
+.app-header {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.app-header .container-fluid {
+  min-height: 72px;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #17365d;
+}
+
+.app-subtitle {
+  margin-top: 2px;
+  margin-bottom: 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+/* ------------------------------
+   Main Body
+------------------------------ */
+
+.app-body {
+  display: flex;
+  min-height: calc(100vh - 72px);
+}
+
+/* ------------------------------
+   Sidebar
+------------------------------ */
+
+.app-sidebar {
+  width: 270px;
+  flex-shrink: 0;
+  padding: 24px 16px;
+  background-color: #17365d;
+}
+
+.sidebar-link {
+  display: block;
+  padding: 11px 14px;
+  border-radius: 6px;
+  color: #e5edf7;
+  text-decoration: none;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.sidebar-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.sidebar-link.active {
+  background-color: #ffffff;
+  color: #17365d;
+  font-weight: 600;
+}
+
+/* ------------------------------
+   Main Content
+------------------------------ */
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  padding: 32px;
+  background-color: #f5f6f8;
+}
+
+.app-content h2 {
+  margin-bottom: 12px;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.app-content p {
+  color: #6b7280;
+}
+
+/* ------------------------------
+   Mobile Sidebar Backdrop
+------------------------------ */
+
+.sidebar-backdrop {
+  display: none;
+}
+
+/* ------------------------------
+   Tablet / Mobile
+------------------------------ */
+
+@media (max-width: 991.98px) {
+  .app-header {
+    position: relative;
+    z-index: 30;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    top: 72px;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    width: 270px;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    top: 72px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 35;
+    display: block;
+    border: 0;
+    padding: 0;
+    background-color: rgba(0, 0, 0, 0.35);
+  }
+
+  .app-content {
+    width: 100%;
+    padding: 20px;
+  }
+
+  .app-subtitle {
+    display: none;
+  }
+}
+
+/* ------------------------------
+   Small Mobile
+------------------------------ */
+
+@media (max-width: 575.98px) {
+  .app-header,
+  .app-header .container-fluid {
+    min-height: 64px;
+  }
+
+  .app-title {
+    font-size: 1.1rem;
+  }
+
+  .app-sidebar,
+  .sidebar-backdrop {
+    top: 64px;
+  }
+
+  .app-content {
+    padding: 16px;
+  }
+
+  .app-header .text-end {
+    display: none;
+  }
+}
