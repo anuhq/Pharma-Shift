@@ -1,5 +1,7 @@
 USE pharmashift_db;
 
+-- Demo data only
+
 INSERT INTO `role` (role_name, description)
 VALUES
 ('Owner/Manager', 'Management user with authorized access'),
@@ -23,43 +25,26 @@ VALUES
 (
     (SELECT role_id FROM `role`
      WHERE role_name = 'Owner/Manager' LIMIT 1),
-    'Rohana Ariyashantha',
-    '0712345678',
+    'Demo Manager',
+    '0700000001',
     'Active'
 ),
 (
     (SELECT role_id FROM `role`
      WHERE role_name = 'Pharmacist' LIMIT 1),
-    'Nimal Perera',
-    '0723456789',
+    'Demo Pharmacist',
+    '0700000002',
     'Active'
 ),
 (
     (SELECT role_id FROM `role`
      WHERE role_name = 'Pharmacy Assistant' LIMIT 1),
-    'Kasuni Silva',
-    '0774567890',
+    'Demo Assistant',
+    '0700000003',
     'Active'
 );
 
 
-INSERT INTO `user`
-(employee_id, username, password_hash, status)
-VALUES
-(
-    (SELECT employee_id FROM employee
-     WHERE full_name = 'Rohana Ariyashantha' LIMIT 1),
-    'rohana',
-    SHA2('DemoPass123!', 256),
-    'Active'
-),
-(
-    (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
-    'nimal',
-    SHA2('DemoPass456!', 256),
-    'Active'
-);
 
 
 INSERT INTO shift_roster
@@ -67,7 +52,7 @@ INSERT INTO shift_roster
 VALUES
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Rohana Ariyashantha' LIMIT 1),
+     WHERE full_name = 'Demo Manager' LIMIT 1),
     (SELECT shift_type_id FROM shift_type
      WHERE shift_name = 'Morning Shift' LIMIT 1),
     '2026-09-05',
@@ -75,7 +60,7 @@ VALUES
 ),
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
+     WHERE full_name = 'Demo Pharmacist' LIMIT 1),
     (SELECT shift_type_id FROM shift_type
      WHERE shift_name = 'Morning Shift' LIMIT 1),
     '2026-09-05',
@@ -83,7 +68,7 @@ VALUES
 ),
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Kasuni Silva' LIMIT 1),
+     WHERE full_name = 'Demo Assistant' LIMIT 1),
     (SELECT shift_type_id FROM shift_type
      WHERE shift_name = 'Evening Shift' LIMIT 1),
     '2026-09-05',
@@ -97,7 +82,7 @@ INSERT INTO attendance
 VALUES
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Rohana Ariyashantha' LIMIT 1),
+     WHERE full_name = 'Demo Manager' LIMIT 1),
     '2026-09-05',
     '07:55:00',
     '16:05:00',
@@ -106,7 +91,7 @@ VALUES
 ),
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
+     WHERE full_name = 'Demo Pharmacist' LIMIT 1),
     '2026-09-05',
     '08:05:00',
     '16:00:00',
@@ -115,7 +100,7 @@ VALUES
 ),
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Kasuni Silva' LIMIT 1),
+     WHERE full_name = 'Demo Assistant' LIMIT 1),
     '2026-09-05',
     '15:55:00',
     NULL,
@@ -129,7 +114,7 @@ INSERT INTO leave_request
 VALUES
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
+     WHERE full_name = 'Demo Pharmacist' LIMIT 1),
     'Annual Leave',
     '2026-09-10',
     '2026-09-11',
@@ -138,7 +123,7 @@ VALUES
 ),
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Kasuni Silva' LIMIT 1),
+     WHERE full_name = 'Demo Assistant' LIMIT 1),
     'Casual Leave',
     '2026-09-15',
     '2026-09-15',
@@ -152,14 +137,14 @@ INSERT INTO overtime
 VALUES
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
+     WHERE full_name = 'Demo Pharmacist' LIMIT 1),
     '2026-09-03',
     2.00,
     'Approved'
 ),
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Kasuni Silva' LIMIT 1),
+     WHERE full_name = 'Demo Assistant' LIMIT 1),
     '2026-09-04',
     1.50,
     'Approved'
@@ -222,7 +207,7 @@ VALUES
     (SELECT template_id FROM task_template
      WHERE template_name = 'Prepare Work Area' LIMIT 1),
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
+     WHERE full_name = 'Demo Pharmacist' LIMIT 1),
     NULL,
     '2026-09-05',
     '09:00:00',
@@ -246,7 +231,7 @@ VALUES
     (SELECT template_id FROM task_template
      WHERE template_name = 'Update Daily Records' LIMIT 1),
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Kasuni Silva' LIMIT 1),
+     WHERE full_name = 'Demo Assistant' LIMIT 1),
     NULL,
     '2026-09-05',
     '20:00:00',
@@ -261,7 +246,7 @@ INSERT INTO shift_handover
 VALUES
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
+     WHERE full_name = 'Demo Pharmacist' LIMIT 1),
     (SELECT shift_type_id FROM shift_type
      WHERE shift_name = 'Evening Shift' LIMIT 1),
     '2026-09-05',
@@ -271,7 +256,7 @@ VALUES
 ),
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Kasuni Silva' LIMIT 1),
+     WHERE full_name = 'Demo Assistant' LIMIT 1),
     (SELECT shift_type_id FROM shift_type
      WHERE shift_name = 'Morning Shift' LIMIT 1),
     '2026-09-06',
@@ -287,7 +272,7 @@ INSERT INTO staff_incident
 VALUES
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
+     WHERE full_name = 'Demo Pharmacist' LIMIT 1),
     (SELECT category_id FROM incident_category
      WHERE category_name = 'Workplace Conduct' LIMIT 1),
     '2026-09-02',
@@ -297,7 +282,7 @@ VALUES
 ),
 (
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Kasuni Silva' LIMIT 1),
+     WHERE full_name = 'Demo Assistant' LIMIT 1),
     (SELECT category_id FROM incident_category
      WHERE category_name = 'Operational Issue' LIMIT 1),
     '2026-09-03',
@@ -326,7 +311,7 @@ VALUES
     (SELECT incident_id FROM staff_incident
      WHERE description LIKE 'A workplace conduct issue%' LIMIT 1),
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Rohana Ariyashantha' LIMIT 1),
+     WHERE full_name = 'Demo Manager' LIMIT 1),
     'Review the incident with the relevant staff member and record the required action.',
     '2026-09-08',
     'In Progress',
@@ -337,7 +322,7 @@ VALUES
     (SELECT incident_id FROM staff_incident
      WHERE description LIKE 'A daily operational procedure%' LIMIT 1),
     (SELECT employee_id FROM employee
-     WHERE full_name = 'Nimal Perera' LIMIT 1),
+     WHERE full_name = 'Demo Pharmacist' LIMIT 1),
     'Review the missed procedure and ensure the required operational steps are completed.',
     '2026-09-07',
     'Pending',
