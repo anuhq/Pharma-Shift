@@ -37,7 +37,7 @@ CREATE TABLE employee (
 CREATE TABLE `user` (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
     employee_id INT NOT NULL UNIQUE,
-    username VARCHAR(50) NOT NULL,
+    username VARCHAR(50) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL,
 
