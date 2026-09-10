@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import ModuleSectionNav from '../components/attendance/ModuleSectionNav';
+import AttendanceRecords from '../components/attendance/AttendanceRecords';
+import LeaveRequests from '../components/attendance/LeaveRequests';
+import OvertimeRecords from '../components/attendance/OvertimeRecords';
+import ReportsPreview from '../components/attendance/ReportsPreview';
 
 const sections = [
   {
@@ -72,13 +76,30 @@ function AttendanceLeaveOvertime() {
             </h3>
 
             <span className="badge text-bg-secondary">
-              Coming soon
+              {['attendance', 'leave', 'overtime'].includes(activeSection) ? 'Demo data' : 'Coming soon'}
             </span>
           </div>
 
           <p className="mb-0">
             {selectedSection.description}
           </p>
+
+          {/* Keep changes when switching tabs. */}
+          <div hidden={activeSection !== 'attendance'}>
+            <AttendanceRecords />
+          </div>
+
+          <div hidden={activeSection !== 'leave'}>
+            <LeaveRequests />
+          </div>
+
+          <div hidden={activeSection !== 'overtime'}>
+            <OvertimeRecords />
+          </div>
+
+          <div hidden={activeSection !== 'reports'}>
+            <ReportsPreview />
+          </div>
         </div>
       </section>
     </div>
