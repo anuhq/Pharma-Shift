@@ -1,121 +1,194 @@
 import { useState } from 'react';
 
 function EmployeeShift() {
-  const [showForm, setShowForm] = useState(false);
+  const [activeSection, setActiveSection] = useState('employees');
+
+  const sections = [
+    { id: 'employees', label: 'Employees' },
+    { id: 'roles', label: 'Roles' },
+    { id: 'shift-types', label: 'Shift Types' },
+    { id: 'roster', label: 'Work Roster' },
+  ];
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <h2 className="mb-1">Employee Management</h2>
-          <p className="text-muted mb-0">
-            Manage pharmacy employees and their assigned roles.
-          </p>
-        </div>
-
-        <button
-          className="btn btn-primary"
-          onClick={() => setShowForm(!showForm)}
-        >
-          {showForm ? 'Close Form' : 'Add Employee'}
-        </button>
+      <div className="mb-4">
+        <h2 className="mb-1">Employee & Shift Management</h2>
+        <p className="text-muted mb-0">
+          Manage employees, roles, shift types and work assignments.
+        </p>
       </div>
 
-      {showForm && (
-        <div className="card border-0 shadow-sm mb-4">
-          <div className="card-body">
-            <h5 className="card-title mb-3">Add New Employee</h5>
-
-            <form>
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <label className="form-label">Full name</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Enter employee name"
-                  />
-                </div>
-
-                <div className="col-md-6">
-                  <label className="form-label">Contact number</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Enter contact number"
-                  />
-                </div>
-
-                <div className="col-md-6">
-                  <label className="form-label">Role</label>
-                  <select className="form-select" defaultValue="">
-                    <option value="" disabled>
-                      Select a role
-                    </option>
-                    <option value="manager">Manager</option>
-                    <option value="pharmacist">Pharmacist</option>
-                    <option value="assistant">Pharmacy Assistant</option>
-                  </select>
-                </div>
-
-                <div className="col-md-6">
-                  <label className="form-label">Status</label>
-                  <select className="form-select" defaultValue="Active">
-                    <option>Active</option>
-                    <option>Inactive</option>
-                  </select>
-                </div>
-              </div>
-
-              <button type="button" className="btn btn-success mt-4">
-                Save Employee
+      <div className="card border-0 shadow-sm mb-4">
+        <div className="card-body">
+          <div className="d-flex flex-wrap gap-2">
+            {sections.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                className={`btn ${
+                  activeSection === section.id
+                    ? 'btn-primary'
+                    : 'btn-outline-primary'
+                }`}
+                onClick={() => setActiveSection(section.id)}
+              >
+                {section.label}
               </button>
-            </form>
+            ))}
           </div>
         </div>
-      )}
+      </div>
 
-      <div className="card border-0 shadow-sm">
-        <div className="card-body">
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <h5 className="card-title mb-0">Employee List</h5>
-            <input
-              type="search"
-              className="form-control"
-              placeholder="Search employees"
-              style={{ maxWidth: '240px' }}
-            />
+      {activeSection === 'employees' && <EmployeeSection />}
+      {activeSection === 'roles' && <RolesSection />}
+      {activeSection === 'shift-types' && <ShiftTypesSection />}
+      {activeSection === 'roster' && <RosterSection />}
+    </div>
+  );
+}
+
+function EmployeeSection() {
+  return (
+    <div className="card border-0 shadow-sm">
+      <div className="card-body">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h3 className="h5 mb-1">Employees</h3>
+            <p className="text-muted mb-0">
+              Add and manage pharmacy employee records.
+            </p>
           </div>
+          <button type="button" className="btn btn-success">
+            Add Employee
+          </button>
+        </div>
 
-          <div className="table-responsive">
-            <table className="table align-middle">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Role</th>
-                  <th>Contact</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
+        <div className="alert alert-info mb-0">
+          Employee records will be connected to MySQL in the next development stage.
+        </div>
+      </div>
+    </div>
+  );
+}
 
-              <tbody>
-                <tr>
-                  <td>Sample Employee</td>
-                  <td>Pharmacist</td>
-                  <td>077 000 0000</td>
-                  <td>
-                    <span className="badge text-bg-success">Active</span>
-                  </td>
-                  <td>
-                    <button type="button" className="btn btn-sm btn-outline-primary">
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+function RolesSection() {
+  return (
+    <div className="card border-0 shadow-sm">
+      <div className="card-body">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h3 className="h5 mb-1">Employee Roles</h3>
+            <p className="text-muted mb-0">
+              View the roles used in the pharmacy.
+            </p>
           </div>
+          <button type="button" className="btn btn-success">
+            Add Role
+          </button>
+        </div>
+
+        <div className="table-responsive">
+          <table className="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Description</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Pharmacist</td>
+                <td>Manages medicines and pharmacy services</td>
+                <td>
+                  <span className="badge text-bg-success">Active</span>
+                </td>
+              </tr>
+              <tr>
+                <td>Pharmacy Assistant</td>
+                <td>Supports daily pharmacy operations</td>
+                <td>
+                  <span className="badge text-bg-success">Active</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShiftTypesSection() {
+  return (
+    <div className="card border-0 shadow-sm">
+      <div className="card-body">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h3 className="h5 mb-1">Shift Types</h3>
+            <p className="text-muted mb-0">
+              Define the working times used in rosters.
+            </p>
+          </div>
+          <button type="button" className="btn btn-success">
+            Add Shift Type
+          </button>
+        </div>
+
+        <div className="table-responsive">
+          <table className="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Shift</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Morning Shift</td>
+                <td>08:00</td>
+                <td>16:00</td>
+                <td>
+                  <span className="badge text-bg-success">Active</span>
+                </td>
+              </tr>
+              <tr>
+                <td>Evening Shift</td>
+                <td>16:00</td>
+                <td>22:00</td>
+                <td>
+                  <span className="badge text-bg-success">Active</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RosterSection() {
+  return (
+    <div className="card border-0 shadow-sm">
+      <div className="card-body">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h3 className="h5 mb-1">Work Roster</h3>
+            <p className="text-muted mb-0">
+              Assign employees to shifts and dates.
+            </p>
+          </div>
+          <button type="button" className="btn btn-success">
+            Assign Shift
+          </button>
+        </div>
+
+        <div className="alert alert-secondary mb-0">
+          Roster assignments will be connected to employees and shift types in the database.
         </div>
       </div>
     </div>
