@@ -2,6 +2,7 @@ import { useState } from 'react';
 import EmployeeManagement from '../components/employeeShift/EmployeeManagement';
 import ShiftTypeManagement from '../components/employeeShift/ShiftTypeManagement';
 import RosterManagement from '../components/employeeShift/RosterManagement';
+import AssignedShiftManagement from '../components/employeeShift/AssignedShiftManagement';
 
 function EmployeeShift() {
   const [activeSection, setActiveSection] = useState('employees');
@@ -109,9 +110,14 @@ function ShiftTypesSection() {
   return <ShiftTypeManagement />;
 }
 
-// Show roster assignments connected to the API
+// Show roster assignment and assigned-shift viewing
 function RosterSection() {
-  return <RosterManagement />;
+  return (
+    <>
+      <RosterManagement />
+      <AssignedShiftManagement />
+    </>
+  );
 }
 
 export default EmployeeShift;
