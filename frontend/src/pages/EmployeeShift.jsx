@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import EmployeeManagement from '../components/employeeShift/EmployeeManagement';
 
 function EmployeeShift() {
   const [activeSection, setActiveSection] = useState('employees');
@@ -48,28 +49,9 @@ function EmployeeShift() {
   );
 }
 
+// Show the employee interface connected to the API
 function EmployeeSection() {
-  return (
-    <div className="card border-0 shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h3 className="h5 mb-1">Employees</h3>
-            <p className="text-muted mb-0">
-              Add and manage pharmacy employee records.
-            </p>
-          </div>
-          <button type="button" className="btn btn-success">
-            Add Employee
-          </button>
-        </div>
-
-        <div className="alert alert-info mb-0">
-          Employee records will be connected to MySQL in the next development stage.
-        </div>
-      </div>
-    </div>
-  );
+  return <EmployeeManagement />;
 }
 
 function RolesSection() {
