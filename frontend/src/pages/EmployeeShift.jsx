@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import EmployeeManagement from '../components/employeeShift/EmployeeManagement';
 import ShiftTypeManagement from '../components/employeeShift/ShiftTypeManagement';
+import RosterManagement from '../components/employeeShift/RosterManagement';
 
 function EmployeeShift() {
   const [activeSection, setActiveSection] = useState('employees');
@@ -108,28 +109,9 @@ function ShiftTypesSection() {
   return <ShiftTypeManagement />;
 }
 
+// Show roster assignments connected to the API
 function RosterSection() {
-  return (
-    <div className="card border-0 shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h3 className="h5 mb-1">Work Roster</h3>
-            <p className="text-muted mb-0">
-              Assign employees to shifts and dates.
-            </p>
-          </div>
-          <button type="button" className="btn btn-success">
-            Assign Shift
-          </button>
-        </div>
-
-        <div className="alert alert-secondary mb-0">
-          Roster assignments will be connected to employees and shift types in the database.
-        </div>
-      </div>
-    </div>
-  );
+  return <RosterManagement />;
 }
 
 export default EmployeeShift;

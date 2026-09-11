@@ -6,6 +6,8 @@ const healthRoutes = require('./routes/healthRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const roleRoutes = require('./routes/roleRoutes');
 const shiftTypeRoutes = require('./routes/shiftTypeRoutes');
+const rosterRoutes = require('./routes/rosterRoutes');
+
 const app = express();
 
 app.use(helmet());
@@ -32,4 +34,5 @@ app.use('/api/health', healthRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/shift-types', shiftTypeRoutes);
+app.use('/api/roster', rosterRoutes);
 module.exports = app;
