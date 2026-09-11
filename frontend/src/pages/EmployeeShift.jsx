@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import EmployeeManagement from '../components/employeeShift/EmployeeManagement';
+import ShiftTypeManagement from '../components/employeeShift/ShiftTypeManagement';
 
 function EmployeeShift() {
   const [activeSection, setActiveSection] = useState('employees');
@@ -102,55 +103,9 @@ function RolesSection() {
   );
 }
 
+// Show shift types connected to the API
 function ShiftTypesSection() {
-  return (
-    <div className="card border-0 shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h3 className="h5 mb-1">Shift Types</h3>
-            <p className="text-muted mb-0">
-              Define the working times used in rosters.
-            </p>
-          </div>
-          <button type="button" className="btn btn-success">
-            Add Shift Type
-          </button>
-        </div>
-
-        <div className="table-responsive">
-          <table className="table align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Shift</th>
-                <th>Start Time</th>
-                <th>End Time</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Morning Shift</td>
-                <td>08:00</td>
-                <td>16:00</td>
-                <td>
-                  <span className="badge text-bg-success">Active</span>
-                </td>
-              </tr>
-              <tr>
-                <td>Evening Shift</td>
-                <td>16:00</td>
-                <td>22:00</td>
-                <td>
-                  <span className="badge text-bg-success">Active</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+  return <ShiftTypeManagement />;
 }
 
 function RosterSection() {
