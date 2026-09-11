@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
         s.shift_name,
         s.start_time,
         s.end_time,
-        r.shift_date,
+        DATE_FORMAT(r.shift_date, '%Y-%m-%d') AS shift_date,
         r.status
       FROM shift_roster r
       INNER JOIN employee e
@@ -31,6 +31,50 @@ router.get('/', async (req, res) => {
 
     res.status(500).json({
       message: 'Unable to retrieve roster assignments.',
+    });
+  }
+});
+
+// Get assignments for one employee
+router.get('/employee/:employeeId', async (req, res) => {
+  const employeeId = Number(req.params.employeeId);
+
+  if (!Number.isInteger(employeeId) || employeeId <= 0) {
+    return res.status(400).json({
+      message: 'Employee ID must be a positive number.',
+    });
+  }
+
+  try {
+    const [rosters] = await pool.query(
+      `
+        SELECT
+          r.roster_id,
+          r.employee_id,
+          e.full_name,
+          r.shift_type_id,
+          s.shift_name,
+          s.start_time,
+          s.end_time,
+          DATE_FORMAT(r.shift_date, '%Y-%m-%d') AS shift_date,
+          r.status
+        FROM shift_roster r
+        INNER JOIN employee e
+          ON r.employee_id = e.employee_id
+        INNER JOIN shift_type s
+          ON r.shift_type_id = s.shift_type_id
+        WHERE r.employee_id = ?
+        ORDER BY r.shift_date DESC, s.start_time
+      `,
+      [employeeId],
+    );
+
+    res.status(200).json(rosters);
+  } catch (error) {
+    console.error('Employee roster error:', error.code);
+
+    res.status(500).json({
+      message: 'Unable to retrieve the employee assignments.',
     });
   }
 });
@@ -118,7 +162,7 @@ router.post('/', async (req, res) => {
           s.shift_name,
           s.start_time,
           s.end_time,
-          r.shift_date,
+          DATE_FORMAT(r.shift_date, '%Y-%m-%d') AS shift_date,
           r.status
         FROM shift_roster r
         INNER JOIN employee e
