@@ -6,6 +6,7 @@ import AssignedShiftManagement, {
   MyAssignedShifts,
 } from '../components/employeeShift/AssignedShiftManagement';
 import { useAuth } from '../auth/useAuth';
+import RoleManagement from '../components/employeeShift/RoleManagement';
 
 function EmployeeShift() {
   const [activeSection, setActiveSection] = useState('employees');
@@ -73,52 +74,9 @@ function EmployeeSection() {
   return <EmployeeManagement />;
 }
 
+// Show employee roles from the database
 function RolesSection() {
-  return (
-    <div className="card border-0 shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h3 className="h5 mb-1">Employee Roles</h3>
-            <p className="text-muted mb-0">
-              View the roles used in the pharmacy.
-            </p>
-          </div>
-          <button type="button" className="btn btn-success">
-            Add Role
-          </button>
-        </div>
-
-        <div className="table-responsive">
-          <table className="table align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>Description</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Pharmacist</td>
-                <td>Manages medicines and pharmacy services</td>
-                <td>
-                  <span className="badge text-bg-success">Active</span>
-                </td>
-              </tr>
-              <tr>
-                <td>Pharmacy Assistant</td>
-                <td>Supports daily pharmacy operations</td>
-                <td>
-                  <span className="badge text-bg-success">Active</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+  return <RoleManagement />;
 }
 
 // Show shift types connected to the API
