@@ -8,6 +8,10 @@ const roleRoutes = require('./routes/roleRoutes');
 const shiftTypeRoutes = require('./routes/shiftTypeRoutes');
 const rosterRoutes = require('./routes/rosterRoutes');
 
+const { sessionMiddleware } = require('./config/session');
+const authRoutes = require('./routes/authRoutes');
+const incidentCategoryRoutes = require('./routes/incidentCategoryRoutes');
+
 const app = express();
 
 app.use(helmet());
@@ -15,24 +19,44 @@ app.use(helmet());
 app.use(
   cors({
     origin: process.env.CLIENT_ORIGIN,
+    credentials: true,
   }),
 );
 
 // Read JSON request bodies
 app.use(express.json({ limit: '100kb' }));
+app.use(sessionMiddleware);
 
 app.get('/', (req, res) => {
-  res.status(200).json({
-    message: 'PharmaShift API is running',
-  });
+  res.status(200).json({ message: 'PharmaShift API is running' });
 });
 
 // Check the database connection
 app.use('/api/health', healthRoutes);
 
-// Employee records and available roles
+// Employee records, roles, shift types and roster routes
 app.use('/api/employees', employeeRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/shift-types', shiftTypeRoutes);
 app.use('/api/roster', rosterRoutes);
+
+app.use('/api/auth', authRoutes);
+app.use('/api/incident-categories', incidentCategoryRoutes);
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  console.error(
+    'Request failed:',
+    req.method,
+    req.path,
+    error.code || error.name || 'UNKNOWN_ERROR',
+  );
+
+  return res.status(500).json({
+    message: 'Internal server error.',
+  });
+});
 module.exports = app;
