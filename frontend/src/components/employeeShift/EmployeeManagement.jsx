@@ -11,7 +11,11 @@ const emptyForm = {
 
 // Read the response and handle unsuccessful requests
 async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, options);
+  const response = await fetch(`${API_URL}${path}`, {
+    credentials: 'include',
+    ...options,
+  });
+
   const data = await response.json();
 
   if (!response.ok) {

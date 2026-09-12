@@ -10,7 +10,11 @@ const emptyForm = {
 };
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, options);
+  const response = await fetch(`${API_URL}${path}`, {
+    credentials: 'include',
+    ...options,
+  });
+
   const data = await response.json();
 
   if (!response.ok) {

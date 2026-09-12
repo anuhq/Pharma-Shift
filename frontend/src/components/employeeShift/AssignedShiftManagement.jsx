@@ -3,7 +3,10 @@ import { useEffect, useState } from 'react';
 const API_URL = 'http://127.0.0.1:5000/api';
 
 async function request(path) {
-  const response = await fetch(`${API_URL}${path}`);
+  const response = await fetch(`${API_URL}${path}`, {
+    credentials: 'include',
+  });
+
   const data = await response.json();
 
   if (!response.ok) {
@@ -12,7 +15,6 @@ async function request(path) {
 
   return data;
 }
-
 export default function AssignedShiftManagement() {
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState('');
