@@ -14,6 +14,11 @@ const incidentCategoryRoutes = require('./routes/incidentCategoryRoutes');
 
 const app = express();
 
+const {
+  requireAuth,
+  requireRole,
+} = require('./middleware/authMiddleware');
+
 app.use(helmet());
 
 app.use(
@@ -34,12 +39,34 @@ app.get('/', (req, res) => {
 // Check the database connection
 app.use('/api/health', healthRoutes);
 
-// Employee records, roles, shift types and roster routes
-app.use('/api/employees', employeeRoutes);
-app.use('/api/roles', roleRoutes);
-app.use('/api/shift-types', shiftTypeRoutes);
-app.use('/api/roster', rosterRoutes);
+// Employee and shift management is for logged-in managers
+app.use(
+  '/api/employees',
+  requireAuth,
+  requireRole('Owner/Manager'),
+  employeeRoutes,
+);
 
+app.use(
+  '/api/roles',
+  requireAuth,
+  requireRole('Owner/Manager'),
+  roleRoutes,
+);
+
+app.use(
+  '/api/shift-types',
+  requireAuth,
+  requireRole('Owner/Manager'),
+  shiftTypeRoutes,
+);
+
+app.use(
+  '/api/roster',
+  requireAuth,
+  requireRole('Owner/Manager'),
+  rosterRoutes,
+);
 app.use('/api/auth', authRoutes);
 app.use('/api/incident-categories', incidentCategoryRoutes);
 
