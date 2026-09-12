@@ -37,7 +37,25 @@ Example POST body (replace employee ID with an existing active employee):
 
 Provide either an employee ID or a shift ID, not both. To reuse a template, send `template_id` instead of `title` and `description`. Due time is optional. Priority is `Low`, `Medium` or `High`. Validation errors return HTTP 400; unexpected failures return a generic HTTP 500 message.
 
-All four tabs support creation and reading. Update/delete and status changes are not included.
+All four tabs support creation and reading. Assignments also support progress updates. General record editing and deletion are not included.
+
+## Staff progress updates
+
+In Task Assignments, click **Update Progress**, choose `Assigned`, `In Progress` or `Completed`, and optionally enter a progress/completion note (up to 255 characters). Save Progress updates MySQL and the row in the table. Refreshing the page retains the saved status and note. Cancel leaves the record unchanged.
+
+`PATCH /api/tasks/:id/progress` accepts `{ "status": "In Progress", "completion_note": "Started checking shelves" }` and returns `{ task: {...} }`. It changes only status and completion note. Blank or omitted notes are stored as NULL. Invalid values return 400; missing tasks return 404. Repeating the same update succeeds.
+
+The module uses the application's existing shared interface. Staff login, per-user permissions and an update history are not implemented.
+
+## Five-day module checklist
+
+| Day | Implemented work |
+| --- | --- |
+| 1 | Local frontend/backend setup and MySQL connection |
+| 2 | Interfaces and popup forms for all four sections |
+| 3 | Templates/checklists save to and load from MySQL; templates can link to checklists |
+| 4 | Employee/shift assignments plus saved status and progress/completion notes |
+| 5 | Basic handover creation and reading with employee, next shift, date, notes and priority |
 
 ## Templates, checklists and handovers
 

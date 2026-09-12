@@ -83,6 +83,30 @@ test('MySQL API creates and reads linked checklists, templates and handovers', {
     const updated = await fetch(`${base}/options`).then((res) => res.json());
     assert.ok(updated.templates.some((item) => item.template_id === template.template_id));
     assert.ok(updated.checklists.some((item) => item.checklist_id === checklist.checklist_id));
+    const assignmentResponse = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      template_id: template.template_id, employee_id: employeeId, assigned_date: '2026-09-12', priority: 'Medium',
+    }) });
+    assert.equal(assignmentResponse.status, 201);
+    const { task: assignment } = await assignmentResponse.json();
+    created.push(['task_assignment', 'assignment_id', assignment.assignment_id]);
+    for (const status of ['In Progress', 'Completed', 'Completed']) {
+      const response = await fetch(`${base}/${assignment.assignment_id}/progress`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, completion_note: 'Verification note', template_id: 2147483647 }),
+      });
+      assert.equal(response.status, 200);
+      const { task } = await response.json();
+      assert.equal(task.status, status);
+      assert.equal(task.completion_note, 'Verification note');
+      assert.equal(task.template_id, template.template_id);
+      const reloaded = await fetch(`${base}/${assignment.assignment_id}`).then((res) => res.json());
+      assert.equal(reloaded.task.status, status);
+      const [stored] = await pool.execute('SELECT status, completion_note FROM task_assignment WHERE assignment_id = ?', [assignment.assignment_id]);
+      assert.equal(stored[0].status, status);
+      assert.equal(stored[0].completion_note, 'Verification note');
+    }
+    const missingProgress = await fetch(`${base}/2147483647/progress`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Completed' }) });
+    assert.equal(missingProgress.status, 404);
     for (const section of Object.keys(examples)) {
       const invalid = await fetch(`${base}/${section}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       assert.equal(invalid.status, 400);

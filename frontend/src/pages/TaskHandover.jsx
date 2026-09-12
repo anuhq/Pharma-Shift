@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import AddTaskModal from '../components/tasks/AddTaskModal';
 import TaskSectionRecords from '../components/tasks/TaskSectionRecords';
+import TaskProgressModal from '../components/tasks/TaskProgressModal';
+import TaskBadge from '../components/tasks/TaskBadge';
 import { getTasks } from '../services/taskApi';
 
 const sections = [
@@ -9,7 +11,7 @@ const sections = [
     title: 'Task Assignments',
     description:
       'Assign daily work to employees or shifts and track its progress.',
-    columns: ['Task', 'Assigned To', 'Date', 'Due Time', 'Priority', 'Status'],
+    columns: ['Task', 'Assigned To', 'Date', 'Due Time', 'Priority', 'Status', 'Progress Note', 'Actions'],
   },
   {
     id: 'templates',
@@ -42,13 +44,14 @@ function TaskHandover() {
   const [loadError, setLoadError] = useState('');
   const [success, setSuccess] = useState('');
   const [reload, setReload] = useState(0);
+  const [progressTask, setProgressTask] = useState(null);
 
   const activeSection = sections.find((section) => section.id === activeSectionId);
 
   useEffect(() => {
     const controller = new AbortController();
     getTasks(controller.signal)
-      .then(({ tasks }) => { setTaskRecords(tasks); setLoadError(''); })
+      .then(({ tasks }) => { if (!controller.signal.aborted) { setTaskRecords(tasks); setLoadError(''); } })
       .catch((error) => { if (error.name !== 'AbortError') setLoadError(error.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -135,8 +138,9 @@ function TaskHandover() {
               {loading ? 'Loading...' : 'Refresh tasks'}
             </button>
           </>}
-          <div className="table-responsive">
-            <table className="table align-middle mb-0">
+          {!loading && !loadError && <p className="small text-secondary mb-3" role="status">Showing {taskRecords.length} saved {taskRecords.length === 1 ? 'task' : 'tasks'}.</p>}
+          <div className="table-responsive task-table-scroll" role="region" aria-label="Task assignments table" tabIndex={0}>
+            <table className="table table-hover align-middle mb-0 task-records-table">
               <caption className="visually-hidden">
                 {activeSection.title}
               </caption>
@@ -155,12 +159,16 @@ function TaskHandover() {
                 {activeSectionId === 'assignments' && taskRecords.length > 0 ? (
                   taskRecords.map((record) => (
                     <tr key={record.assignment_id}>
-                      <td><div>{record.title}</div>{record.description && <div className="small text-muted">{record.description}</div>}</td>
+                      <td className="task-table-text"><div>{record.title}</div>{record.description && <div className="small text-secondary mt-1">{record.description}</div>}</td>
                       <td>{record.employee_name || record.shift_name || 'Unassigned'}</td>
                       <td>{record.assigned_date || '—'}</td>
                       <td>{record.due_time || '—'}</td>
-                      <td>{record.priority}</td>
-                      <td>{record.status}</td>
+                      <td><TaskBadge value={record.priority} /></td>
+                      <td><TaskBadge value={record.status} /></td>
+                      <td className="task-table-text">{record.completion_note || '—'}</td>
+                      <td><button type="button" className="btn btn-outline-primary btn-sm" disabled={loading}
+                        aria-label={`Update progress for ${record.title}`}
+                        onClick={() => { setSuccess(''); setProgressTask(record); }}>Update Progress</button></td>
                     </tr>
                   ))
                 ) : (
@@ -180,6 +188,11 @@ function TaskHandover() {
       </section>}
 
       {showTaskModal && <AddTaskModal onClose={() => setShowTaskModal(false)} onSaved={handleSaved} />}
+      {progressTask && <TaskProgressModal task={progressTask} onClose={() => setProgressTask(null)} onSaved={(updated) => {
+        setTaskRecords((records) => records.map((record) => record.assignment_id === updated.assignment_id ? updated : record));
+        setSuccess(`Progress for "${updated.title}" saved successfully.`);
+        setProgressTask(null);
+      }} />}
 
     </div>
   );

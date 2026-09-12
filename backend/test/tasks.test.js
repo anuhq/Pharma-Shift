@@ -1,6 +1,19 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { validateTask } = require('../src/validation/taskValidation');
+const { validateProgress } = require('../src/validation/taskProgressValidation');
+
+test('progress validation allows supported statuses and bounded notes only', () => {
+  for (const status of ['Assigned', 'In Progress', 'Completed']) {
+    const { value, errors } = validateProgress({ status, completion_note: ' Work recorded ' });
+    assert.deepEqual(errors, {});
+    assert.equal(value.completion_note, 'Work recorded');
+  }
+  assert.equal(validateProgress({ status: 'Completed', completion_note: ' ' }).value.completion_note, null);
+  for (const input of [null, [], {}, { status: 'Unknown' }, { status: 'Completed', completion_note: 12 }, { status: 'Completed', completion_note: 'x'.repeat(256) }]) {
+    assert.ok(Object.keys(validateProgress(input).errors).length);
+  }
+});
 
 const valid = { title: ' Check stock ', employee_id: 1, assigned_date: '2026-09-12', priority: 'Medium', due_time: '09:30' };
 
@@ -31,6 +44,12 @@ const model = require('../src/models/taskModel');
 const records = [];
 model.list = async () => records;
 model.find = async (id) => records.find((task) => task.assignment_id === id);
+model.updateProgress = async (id, progress) => {
+  const record = records.find((task) => task.assignment_id === id);
+  if (!record) return null;
+  Object.assign(record, progress);
+  return record;
+};
 model.options = async () => ({ employees: [{ employee_id: 1, full_name: 'Test employee' }], shifts: [], templates: [] });
 model.create = async (task) => {
   if (task.employee_id === 99) throw Object.assign(new Error('Selected employee is unavailable.'), { status: 400 });
@@ -72,4 +91,23 @@ test('HTTP rejects invalid input and returns missing-record errors', async () =>
   const malformed = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' });
   assert.equal(malformed.status, 400);
   assert.equal((await malformed.json()).message, 'Request body must be valid JSON.');
+});
+
+test('progress endpoint updates only progress fields and handles bad requests', async () => {
+  const created = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid) }).then((res) => res.json());
+  const id = created.task.assignment_id;
+  async function patch(target, body) {
+    return fetch(`${base}/${target}/progress`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  }
+  const response = await patch(id, { status: 'In Progress', completion_note: 'Started', employee_id: 999 });
+  assert.equal(response.status, 200);
+  const { task } = await response.json();
+  assert.equal(task.status, 'In Progress');
+  assert.equal(task.completion_note, 'Started');
+  assert.equal(task.employee_id, valid.employee_id);
+  assert.equal((await patch(id, { status: 'Invalid' })).status, 400);
+  assert.equal((await patch('bad', { status: 'Completed' })).status, 400);
+  assert.equal((await patch(2147483647, { status: 'Completed' })).status, 404);
+  const detail = await fetch(`${base}/${id}`).then((res) => res.json());
+  assert.equal(detail.task.status, 'In Progress');
 });

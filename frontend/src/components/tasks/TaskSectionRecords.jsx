@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getTaskSection } from '../../services/taskApi';
 import TaskSectionModal from './TaskSectionModal';
 import { taskSections } from './taskSections';
+import TaskBadge from './TaskBadge';
 
 export default function TaskSectionRecords({ section }) {
   const config = taskSections[section.id];
@@ -42,12 +43,17 @@ export default function TaskSectionRecords({ section }) {
         {error && <div className="alert alert-danger" role="alert">{error}</div>}
         <button type="button" className="btn btn-outline-secondary btn-sm mb-3" disabled={loading}
           onClick={() => { setLoading(true); setError(''); setReload((value) => value + 1); }}>{loading ? 'Loading...' : 'Refresh records'}</button>
-        <div className="table-responsive">
-          <table className="table align-middle mb-0">
+        {!loading && !error && <p className="small text-secondary mb-3" role="status">Showing {records.length} saved {records.length === 1 ? 'record' : 'records'}.</p>}
+        <div className="table-responsive task-table-scroll" role="region" aria-label={`${section.title} table`} tabIndex={0}>
+          <table className="table table-hover align-middle mb-0 task-records-table">
             <caption className="visually-hidden">{section.title}</caption>
             <thead className="table-light"><tr>{config.columns.map(([field, label]) => <th key={field} scope="col">{label}</th>)}</tr></thead>
             <tbody>
-              {records.map((record) => <tr key={record[config.id]}>{config.columns.map(([field]) => <td key={field} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{record[field] || '—'}</td>)}</tr>)}
+              {records.map((record) => <tr key={record[config.id]}>
+                {config.columns.map(([field]) => <td key={field} className={['template_name', 'checklist_name', 'description', 'notes'].includes(field) ? 'task-table-text' : undefined}>
+                  {field === 'status' || field === 'priority' ? <TaskBadge value={record[field]} /> : record[field] || '—'}
+                </td>)}
+              </tr>)}
               {!records.length && <tr><td colSpan={config.columns.length} className="text-center text-muted py-5">
                 {loading ? 'Loading records...' : error ? 'Records could not be loaded. Refresh to retry.' : `No records yet. Click Add ${config.label} to create one.`}
               </td></tr>}

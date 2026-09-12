@@ -18,6 +18,9 @@ async function request(path, options = {}) {
 }
 
 export const getTasks = (signal) => request('', { signal });
+export const updateTaskProgress = (id, progress) => request(`/${id}/progress`, {
+  method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(progress),
+});
 export const getTaskSection = (section, signal) => request(`/${section}`, { signal });
 export const createTaskSection = (section, record) => request(`/${section}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record),

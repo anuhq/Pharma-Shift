@@ -72,4 +72,26 @@ async function create(task) {
   }
 }
 
-module.exports = { list, find, options, create };
+async function updateProgress(id, progress) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute('SELECT assignment_id FROM task_assignment WHERE assignment_id = ? FOR UPDATE', [id]);
+    if (!rows.length) {
+      await connection.rollback();
+      return null;
+    }
+    await connection.execute('UPDATE task_assignment SET status = ?, completion_note = ? WHERE assignment_id = ?',
+      [progress.status, progress.completion_note, id]);
+    const task = await find(id, connection);
+    await connection.commit();
+    return task;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+module.exports = { list, find, options, create, updateProgress };

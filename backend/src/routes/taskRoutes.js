@@ -13,5 +13,6 @@ router.get('/', controller.listTasks);
 router.get('/options', controller.getOptions);
 router.get('/:id', controller.getTask);
 router.post('/', controller.createTask);
+router.patch('/:id/progress', controller.updateProgress);
 
 module.exports = router;
