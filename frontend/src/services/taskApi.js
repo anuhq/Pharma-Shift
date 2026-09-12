@@ -18,6 +18,10 @@ async function request(path, options = {}) {
 }
 
 export const getTasks = (signal) => request('', { signal });
+export const getTaskSection = (section, signal) => request(`/${section}`, { signal });
+export const createTaskSection = (section, record) => request(`/${section}`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record),
+});
 export const getTaskOptions = (signal) => request('/options', { signal });
 export const createTask = (task) => request('', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(task),

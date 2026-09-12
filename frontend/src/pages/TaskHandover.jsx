@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import AddTaskModal from '../components/tasks/AddTaskModal';
+import TaskSectionRecords from '../components/tasks/TaskSectionRecords';
 import { getTasks } from '../services/taskApi';
 
 const sections = [
@@ -98,7 +99,7 @@ function TaskHandover() {
         ))}
       </div>
 
-      <section
+      {activeSectionId !== 'assignments' ? <TaskSectionRecords key={activeSectionId} section={activeSection} /> : <section
         id="task-handover-content"
         className="card border-0 shadow-sm"
         aria-labelledby="task-handover-section-title"
@@ -176,7 +177,7 @@ function TaskHandover() {
             </table>
           </div>
         </div>
-      </section>
+      </section>}
 
       {showTaskModal && <AddTaskModal onClose={() => setShowTaskModal(false)} onSaved={handleSaved} />}
 

@@ -24,8 +24,9 @@ async function options() {
     pool.execute("SELECT employee_id, full_name FROM employee WHERE status = 'Active' ORDER BY full_name"),
     pool.execute("SELECT shift_type_id, shift_name FROM shift_type WHERE status = 'Active' ORDER BY shift_name"),
     pool.execute("SELECT template_id, template_name, description, priority FROM task_template WHERE status = 'Active' ORDER BY template_name"),
+    pool.execute("SELECT checklist_id, checklist_name FROM task_checklist WHERE status = 'Active' ORDER BY checklist_name"),
   ]);
-  return { employees: results[0][0], shifts: results[1][0], templates: results[2][0] };
+  return { employees: results[0][0], shifts: results[1][0], templates: results[2][0], checklists: results[3][0] };
 }
 
 async function create(task) {

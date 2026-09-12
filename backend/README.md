@@ -37,8 +37,24 @@ Example POST body (replace employee ID with an existing active employee):
 
 Provide either an employee ID or a shift ID, not both. To reuse a template, send `template_id` instead of `title` and `description`. Due time is optional. Priority is `Low`, `Medium` or `High`. Validation errors return HTTP 400; unexpected failures return a generic HTTP 500 message.
 
-This implementation covers task assignment creation and reading. The other section tabs retain their existing placeholders; update/delete and status changes are not included.
+All four tabs support creation and reading. Update/delete and status changes are not included.
+
+## Templates, checklists and handovers
+
+Each section has GET (list), GET `/:id` (detail) and POST (create) endpoints:
+
+| Section | API path | Form fields |
+| --- | --- | --- |
+| Task Templates | `/api/tasks/templates` | `template_name`, optional `description` and `checklist_id`, `priority` |
+| Checklists | `/api/tasks/checklists` | `checklist_name`, `shift_type_id`, `frequency` |
+| Shift Handovers | `/api/tasks/handovers` | `employee_id`, `to_shift_type_id`, `handover_date`, `notes`, `priority` |
+
+Lists return `{ records: [...] }`; detail and creation return `{ record: {...} }`. IDs must be positive integers referring to active records. Templates and checklists start as `Active`; handovers start as `Open`. Handover dates use `YYYY-MM-DD`.
+
+Create a checklist first, then select it when creating a template to group that task under the checklist. Templates immediately become available in Add Task. Creating a checklist or template does not automatically assign work. Handovers record notes for the next shift.
 
 ## Checks
 
 Run `npm test` in `backend` for validation and API tests using an isolated in-memory model stub. Run `npm run lint` and `npm run build` in `frontend`.
+
+For an optional real MySQL section API check in PowerShell, run `$env:TASK_DB_TEST='1'; node --test test/taskSections.test.js; Remove-Item Env:TASK_DB_TEST` from `backend`. This requires the configured database with an active employee and shift. It creates temporary records and removes only those records afterward.
