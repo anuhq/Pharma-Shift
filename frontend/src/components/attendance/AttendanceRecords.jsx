@@ -1,85 +1,102 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '../../auth/useAuth';
+import {
+  checkIn,
+  checkOut,
+  correctAttendance,
+  getAttendanceRecords,
+} from '../../api/attendanceApi';
 import AttendanceRecordingForm from './AttendanceRecordingForm';
 import AttendanceCorrectionForm from './AttendanceCorrectionForm';
 
-// Fictional records for the interface preview. These are not database records.
-const sampleAttendance = [
-  {
-    attendance_id: 1,
-    employee_id: 101,
-    full_name: 'Demo Employee A',
-    attendance_date: '2026-09-09',
-    check_in_time: '08:55:00',
-    check_out_time: '17:00:00',
-    status: 'Present',
-  },
-  {
-    attendance_id: 2,
-    employee_id: 102,
-    full_name: 'Demo Employee B',
-    attendance_date: '2026-09-09',
-    check_in_time: '09:20:00',
-    check_out_time: null,
-    status: 'Late',
-  },
-  {
-    attendance_id: 3,
-    employee_id: 101,
-    full_name: 'Demo Employee A',
-    attendance_date: '2026-09-08',
-    check_in_time: '08:50:00',
-    check_out_time: '17:05:00',
-    status: 'Present',
-  },
-];
-
 const statusClasses = {
   Present: 'text-bg-success',
+  'Checked In': 'text-bg-primary',
   Late: 'text-bg-warning',
 };
 
-// UI fixture only. Production staff identity must come from the authenticated
-// backend session, and production attendance timestamps must come from the server.
-const previewEmployee = { employee_id: 103, full_name: 'Demo Employee C' };
-
-function getLocalAttendanceStamp() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return {
-    date: `${now.getFullYear()}-${month}-${day}`,
-    time: now.toTimeString().slice(0, 8),
-  };
-}
-
 function AttendanceRecords() {
-  const [records, setRecords] = useState(sampleAttendance);
+  const { user } = useAuth();
+  const isManager = user?.roleName === 'Owner/Manager';
+
+  const [records, setRecords] = useState([]);
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [activeForm, setActiveForm] = useState(null);
   const [message, setMessage] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(true);
+
   const lastTriggerRef = useRef(null);
   const recordButtonRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getAttendanceRecords()
+      .then((data) => {
+        if (cancelled) return;
+
+        setRecords(Array.isArray(data.records) ? data.records : []);
+        setLoadError('');
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(error.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (activeForm === null && lastTriggerRef.current) {
       const target = lastTriggerRef.current.isConnected
         ? lastTriggerRef.current
         : recordButtonRef.current;
+
       target?.focus();
       lastTriggerRef.current = null;
     }
   }, [activeForm]);
 
+  async function reloadRecords() {
+    const data = await getAttendanceRecords();
+    setRecords(Array.isArray(data.records) ? data.records : []);
+    setLoadError('');
+  }
+
+  async function retryLoad() {
+    setLoading(true);
+    setLoadError('');
+
+    try {
+      await reloadRecords();
+    } catch (error) {
+      setLoadError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const query = search.trim().toLowerCase();
 
   const filteredRecords = records.filter((record) => {
     const matchesSearch =
-      record.full_name.toLowerCase().includes(query) ||
+      String(record.full_name || '').toLowerCase().includes(query) ||
       String(record.employee_id).includes(query);
+
     const matchesDate =
       dateFilter === '' || record.attendance_date === dateFilter;
+
     const matchesStatus =
       statusFilter === '' || record.status === statusFilter;
 
@@ -98,67 +115,51 @@ function AttendanceRecords() {
     setActiveForm(form);
   }
 
-  function recordAttendance(action) {
-    const stamp = getLocalAttendanceStamp();
-    const todayRecord = records.find((record) =>
-      record.employee_id === previewEmployee.employee_id &&
-      record.attendance_date === stamp.date
-    );
-    const openRecord = records.find((record) =>
-      record.employee_id === previewEmployee.employee_id && !record.check_out_time
-    );
+  async function recordAttendance(action) {
+    try {
+      const result = action === 'check-in'
+        ? await checkIn()
+        : await checkOut();
 
-    if (action === 'check-in') {
-      if (todayRecord) return 'A check-in already exists for this employee today.';
-      if (openRecord) return 'An earlier attendance entry is still awaiting check-out.';
+      await reloadRecords();
+      setMessage(result.message);
+      resetFilters();
+      setActiveForm(null);
 
-      const nextId = Math.max(0, ...records.map((record) => record.attendance_id)) + 1;
-      setRecords((current) => [{
-        attendance_id: nextId,
-        ...previewEmployee,
-        attendance_date: stamp.date,
-        check_in_time: stamp.time,
-        check_out_time: null,
-        // Preview default only; lateness needs the agreed roster rules later.
-        status: 'Present',
-      }, ...current]);
-      setMessage('Preview check-in added for Demo Employee C. No database record was created.');
-    } else if (action === 'check-out') {
-      if (!todayRecord) return 'Check in before checking out. This preview uses same-day attendance records.';
-      if (todayRecord.check_out_time) return 'This attendance record already has a check-out.';
-      if (stamp.time < todayRecord.check_in_time) return 'Check-out cannot be before check-in.';
-
-      setRecords((current) => current.map((record) =>
-        record.attendance_id === todayRecord.attendance_id
-          ? { ...record, check_out_time: stamp.time }
-          : record
-      ));
-      setMessage('Preview check-out added for Demo Employee C. No database record was changed.');
-    } else {
-      return 'Select check-in or check-out.';
+      return '';
+    } catch (error) {
+      return error.message;
     }
-
-    resetFilters();
-    setActiveForm(null);
-    return '';
   }
 
-  function saveCorrection(changes) {
-    setRecords((current) => current.map((record) =>
-      record.attendance_id === activeForm.record.attendance_id
-        ? { ...record, ...changes }
-        : record
-    ));
-    setMessage('Preview correction applied. No database record was changed.');
-    resetFilters();
-    setActiveForm(null);
+  async function saveCorrection(changes) {
+    try {
+      const result = await correctAttendance(
+        activeForm.record.attendance_id,
+        changes
+      );
+
+      await reloadRecords();
+      setMessage(result.message);
+      resetFilters();
+      setActiveForm(null);
+
+      return '';
+    } catch (error) {
+      return error.message;
+    }
   }
+
+  const currentEmployee = {
+    employee_id: user?.employeeId,
+    full_name: user?.fullName || user?.username || 'Signed-in employee',
+  };
 
   return (
     <div className="mt-4">
       <p className="small text-secondary">
-        Fictional data only. Staff and manager controls are shown together for
-        interface testing. Refreshing the page resets all preview changes.
+        Attendance records are loaded from the PharmaShift database.
+        Staff see their own records, while managers can review all records.
       </p>
 
       <div className="d-flex flex-wrap gap-2 mb-4">
@@ -167,23 +168,43 @@ function AttendanceRecords() {
           className="btn btn-primary"
           ref={recordButtonRef}
           disabled={activeForm !== null}
-          onClick={(event) => openForm({ type: 'record' }, event.currentTarget)}
+          onClick={(event) =>
+            openForm({ type: 'record' }, event.currentTarget)
+          }
         >
           Record attendance
         </button>
       </div>
 
-      {message && <div className="alert alert-info" role="status">{message}</div>}
+      {message && (
+        <div className="alert alert-success" role="status">
+          {message}
+        </div>
+      )}
+
+      {loadError && (
+        <div className="alert alert-danger" role="alert">
+          <p className="mb-2">{loadError}</p>
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={retryLoad}
+          >
+            Try again
+          </button>
+        </div>
+      )}
 
       {activeForm?.type === 'record' && (
         <AttendanceRecordingForm
-          employee={previewEmployee}
+          employee={currentEmployee}
           onRecord={recordAttendance}
           onCancel={() => setActiveForm(null)}
         />
       )}
 
-      {activeForm?.type === 'correct' && (
+      {activeForm?.type === 'correct' && isManager && (
         <AttendanceCorrectionForm
           record={activeForm.record}
           onSave={saveCorrection}
@@ -193,9 +214,13 @@ function AttendanceRecords() {
 
       <div className="row g-3 align-items-end mb-4">
         <div className="col-12 col-md-6 col-lg-4">
-          <label htmlFor="attendance-search" className="form-label">
+          <label
+            htmlFor="attendance-search"
+            className="form-label"
+          >
             Search employee
           </label>
+
           <input
             id="attendance-search"
             type="search"
@@ -207,9 +232,13 @@ function AttendanceRecords() {
         </div>
 
         <div className="col-12 col-md-6 col-lg-3">
-          <label htmlFor="attendance-date" className="form-label">
+          <label
+            htmlFor="attendance-date"
+            className="form-label"
+          >
             Attendance date
           </label>
+
           <input
             id="attendance-date"
             type="date"
@@ -220,9 +249,13 @@ function AttendanceRecords() {
         </div>
 
         <div className="col-12 col-md-6 col-lg-3">
-          <label htmlFor="attendance-status" className="form-label">
+          <label
+            htmlFor="attendance-status"
+            className="form-label"
+          >
             Status
           </label>
+
           <select
             id="attendance-status"
             className="form-select"
@@ -230,6 +263,7 @@ function AttendanceRecords() {
             onChange={(event) => setStatusFilter(event.target.value)}
           >
             <option value="">All statuses</option>
+            <option value="Checked In">Checked In</option>
             <option value="Present">Present</option>
             <option value="Late">Late</option>
           </select>
@@ -247,77 +281,108 @@ function AttendanceRecords() {
       </div>
 
       <p className="small text-secondary mb-3" role="status">
-        Showing {filteredRecords.length} of {records.length} demo records.
+        {loading
+          ? 'Loading attendance records...'
+          : `Showing ${filteredRecords.length} of ${records.length} records.`}
       </p>
 
-      <div className="table-responsive">
-        <table className="table table-hover align-middle mb-0">
-          <caption className="visually-hidden">
-            Fictional attendance records for the interface preview
-          </caption>
-          <thead className="table-light">
-            <tr>
-              <th scope="col">Employee</th>
-              <th scope="col">Employee ID</th>
-              <th scope="col">Date</th>
-              <th scope="col">Check-in</th>
-              <th scope="col">Check-out</th>
-              <th scope="col">Status</th>
-              <th scope="col">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRecords.length === 0 ? (
+      {!loading && (
+        <div className="table-responsive">
+          <table className="table table-hover align-middle mb-0">
+            <caption className="visually-hidden">
+              Attendance records stored in the PharmaShift database
+            </caption>
+
+            <thead className="table-light">
               <tr>
-                <td colSpan={7} className="text-center text-secondary py-4">
-                  No attendance records match these filters.
-                </td>
+                <th scope="col">Employee</th>
+                <th scope="col">Employee ID</th>
+                <th scope="col">Date</th>
+                <th scope="col">Check-in</th>
+                <th scope="col">Check-out</th>
+                <th scope="col">Status</th>
+                {isManager && <th scope="col">Action</th>}
               </tr>
-            ) : (
-              filteredRecords.map((record) => (
-                <tr key={record.attendance_id}>
-                  <td>
-                    {record.full_name}
-                    {record.correction_note && (
-                      <div className="small text-secondary mt-1 text-break">
-                        Correction: {record.correction_note}
-                      </div>
-                    )}
-                  </td>
-                  <td>{record.employee_id}</td>
-                  <td className="text-nowrap">{record.attendance_date}</td>
-                  <td>{record.check_in_time.slice(0, 5)}</td>
-                  <td>
-                    {record.check_out_time
-                      ? record.check_out_time.slice(0, 5)
-                      : 'Not checked out'}
-                  </td>
-                  <td>
-                    <span
-                      className={`badge ${
-                        statusClasses[record.status] ?? 'text-bg-secondary'
-                      }`}
-                    >
-                      {record.status}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-primary"
-                      disabled={activeForm !== null}
-                      aria-label={`Correct attendance for ${record.full_name} on ${record.attendance_date}`}
-                      onClick={(event) => openForm({ type: 'correct', record }, event.currentTarget)}
-                    >
-                      Correct
-                    </button>
+            </thead>
+
+            <tbody>
+              {filteredRecords.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={isManager ? 7 : 6}
+                    className="text-center text-secondary py-4"
+                  >
+                    No attendance records match these filters.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                filteredRecords.map((record) => (
+                  <tr key={record.attendance_id}>
+                    <td>
+                      {record.full_name}
+
+                      {record.correction_note && (
+                        <div className="small text-secondary mt-1 text-break">
+                          Correction: {record.correction_note}
+                        </div>
+                      )}
+                    </td>
+
+                    <td>{record.employee_id}</td>
+
+                    <td className="text-nowrap">
+                      {record.attendance_date}
+                    </td>
+
+                    <td>
+                      {record.check_in_time?.slice(0, 5) || 'Not recorded'}
+                    </td>
+
+                    <td>
+                      {record.check_out_time
+                        ? record.check_out_time.slice(0, 5)
+                        : 'Not checked out'}
+                    </td>
+
+                    <td>
+                      <span
+                        className={`badge ${
+                          statusClasses[record.status] ??
+                          'text-bg-secondary'
+                        }`}
+                      >
+                        {record.status}
+                      </span>
+                    </td>
+
+                    {isManager && (
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          disabled={activeForm !== null}
+                          aria-label={`Correct attendance for ${record.full_name} on ${record.attendance_date}`}
+                          onClick={(event) =>
+                            openForm(
+                              {
+                                type: 'correct',
+                                record,
+                              },
+                              event.currentTarget
+                            )
+                          }
+                        >
+                          Correct
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

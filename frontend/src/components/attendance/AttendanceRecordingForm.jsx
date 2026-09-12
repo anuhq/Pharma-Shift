@@ -3,15 +3,27 @@ import { useEffect, useRef, useState } from 'react';
 function AttendanceRecordingForm({ employee, onRecord, onCancel }) {
   const [action, setAction] = useState('check-in');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const headingRef = useRef(null);
 
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
 
-  function handleSubmit(event) {
-    event.preventDefault();
-    setError(onRecord(action));
+  async function handleSubmit(event) {
+       event.preventDefault();
+    setError('');
+    setSubmitting(true);
+
+    try {
+      const requestError = await onRecord(action);
+
+      if (requestError) {
+        setError(requestError);
+           }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -25,36 +37,47 @@ function AttendanceRecordingForm({ employee, onRecord, onCancel }) {
         ref={headingRef}
         tabIndex={-1}
       >
-        Record attendance - staff preview
+        Record attendance
       </h4>
+
       <p className="small text-secondary">
-        The current date and time will be captured when you submit.
+        The server will record the current date and time.
       </p>
 
       <form onSubmit={handleSubmit}>
         <div className="mb-3">
-          <label htmlFor="record-attendance-employee" className="form-label">
+          <label
+            htmlFor="record-attendance-employee"
+            className="form-label"
+          >
             Employee
           </label>
+
           <input
             id="record-attendance-employee"
             className="form-control"
             value={`${employee.full_name} (${employee.employee_id})`}
             readOnly
           />
+
           <div className="form-text">
-            This fictional employee is fixed for the preview.
+            Your employee identity comes from the signed-in account.
           </div>
         </div>
 
         <div className="mb-3">
-          <label htmlFor="record-attendance-action" className="form-label">
+          <label
+            htmlFor="record-attendance-action"
+            className="form-label"
+          >
             Attendance action
           </label>
+
           <select
             id="record-attendance-action"
             className="form-select"
             value={action}
+            disabled={submitting}
             onChange={(event) => {
               setAction(event.target.value);
               setError('');
@@ -65,13 +88,31 @@ function AttendanceRecordingForm({ employee, onRecord, onCancel }) {
           </select>
         </div>
 
-        {error && <div className="alert alert-danger" role="alert">{error}</div>}
+        {error && (
+          <div className="alert alert-danger" role="alert">
+            {error}
+          </div>
+        )}
 
         <div className="d-flex flex-wrap gap-2">
-          <button type="submit" className="btn btn-primary">
-            {action === 'check-in' ? 'Preview check-in' : 'Preview check-out'}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={submitting}
+          >
+            {submitting
+              ? 'Saving...'
+              : action === 'check-in'
+                ? 'Check in'
+                : 'Check out'}
           </button>
-          <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
+
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            disabled={submitting}
+            onClick={onCancel}
+          >
             Cancel
           </button>
         </div>
