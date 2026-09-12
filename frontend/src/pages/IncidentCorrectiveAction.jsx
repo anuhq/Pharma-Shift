@@ -18,8 +18,8 @@ const emptyIncident = {
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
-    credentials: 'include',
     ...options,
+    credentials: 'include',
   });
 
   const data = await response.json().catch(() => ({}));
@@ -50,9 +50,6 @@ function IncidentCorrectiveAction() {
   const [message, setMessage] = useState('');
 
   const loadData = useCallback(async () => {
-    setLoading(true);
-    setError('');
-
     try {
       const [categoryData, employeeData, incidentData] =
         await Promise.all([
@@ -64,6 +61,7 @@ function IncidentCorrectiveAction() {
       setCategories(categoryData.categories || []);
       setEmployees(employeeData.employees || []);
       setIncidents(incidentData.incidents || []);
+      setError('');
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -72,7 +70,11 @@ function IncidentCorrectiveAction() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    const timerId = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+
+    return () => window.clearTimeout(timerId);
   }, [loadData]);
 
   function handleCategoryChange(event) {
@@ -202,6 +204,7 @@ function IncidentCorrectiveAction() {
         <h2 className="mb-2">
           Staff Incident &amp; Corrective Action
         </h2>
+
         <p className="text-muted mb-0">
           Record incidents, investigate causes and manage corrective actions.
         </p>
@@ -214,7 +217,7 @@ function IncidentCorrectiveAction() {
       )}
 
       {message && (
-        <div className="alert alert-success" role="alert">
+        <div className="alert alert-success" role="status">
           {message}
         </div>
       )}
@@ -231,12 +234,10 @@ function IncidentCorrectiveAction() {
 
               <form onSubmit={submitCategory}>
                 <div className="mb-3">
-                  <label
-                    className="form-label"
-                    htmlFor="category_name"
-                  >
+                  <label className="form-label" htmlFor="category_name">
                     Category name
                   </label>
+
                   <input
                     id="category_name"
                     name="category_name"
@@ -249,12 +250,10 @@ function IncidentCorrectiveAction() {
                 </div>
 
                 <div className="mb-3">
-                  <label
-                    className="form-label"
-                    htmlFor="severity_level"
-                  >
+                  <label className="form-label" htmlFor="severity_level">
                     Severity level
                   </label>
+
                   <select
                     id="severity_level"
                     name="severity_level"
@@ -276,11 +275,12 @@ function IncidentCorrectiveAction() {
                   >
                     Description
                   </label>
+
                   <textarea
                     id="category_description"
                     name="description"
                     className="form-control"
-                    rows="3"
+                    rows={3}
                     value={categoryForm.description}
                     onChange={handleCategoryChange}
                     maxLength={255}
@@ -332,6 +332,7 @@ function IncidentCorrectiveAction() {
                         <th>Action</th>
                       </tr>
                     </thead>
+
                     <tbody>
                       {categories.map((category) => (
                         <tr key={category.category_id}>
@@ -370,12 +371,10 @@ function IncidentCorrectiveAction() {
 
               <form onSubmit={submitIncident}>
                 <div className="mb-3">
-                  <label
-                    className="form-label"
-                    htmlFor="employee_id"
-                  >
+                  <label className="form-label" htmlFor="employee_id">
                     Employee
                   </label>
+
                   <select
                     id="employee_id"
                     name="employee_id"
@@ -385,6 +384,7 @@ function IncidentCorrectiveAction() {
                     required
                   >
                     <option value="">Select employee</option>
+
                     {employees.map((employee) => (
                       <option
                         key={employee.employee_id}
@@ -403,6 +403,7 @@ function IncidentCorrectiveAction() {
                   >
                     Incident category
                   </label>
+
                   <select
                     id="incident_category_id"
                     name="category_id"
@@ -412,6 +413,7 @@ function IncidentCorrectiveAction() {
                     required
                   >
                     <option value="">Select category</option>
+
                     {categories.map((category) => (
                       <option
                         key={category.category_id}
@@ -424,12 +426,10 @@ function IncidentCorrectiveAction() {
                 </div>
 
                 <div className="mb-3">
-                  <label
-                    className="form-label"
-                    htmlFor="incident_date"
-                  >
+                  <label className="form-label" htmlFor="incident_date">
                     Incident date
                   </label>
+
                   <input
                     id="incident_date"
                     name="incident_date"
@@ -448,11 +448,12 @@ function IncidentCorrectiveAction() {
                   >
                     Incident description
                   </label>
+
                   <textarea
                     id="incident_description"
                     name="description"
                     className="form-control"
-                    rows="4"
+                    rows={4}
                     value={incidentForm.description}
                     onChange={handleIncidentChange}
                     maxLength={500}
@@ -509,10 +510,12 @@ function IncidentCorrectiveAction() {
                         <th>Action</th>
                       </tr>
                     </thead>
+
                     <tbody>
                       {incidents.map((incident) => (
                         <tr key={incident.incident_id}>
                           <td>{incident.full_name}</td>
+
                           <td>
                             {incident.category_name}
                             <br />
@@ -520,11 +523,14 @@ function IncidentCorrectiveAction() {
                               {incident.severity_level}
                             </small>
                           </td>
+
                           <td>{incident.incident_date}</td>
                           <td>{incident.description}</td>
                           <td>{incident.status}</td>
+
                           <td>
-                            {incident.status.toLowerCase() === 'closed' ? (
+                            {String(incident.status).toLowerCase() ===
+                            'closed' ? (
                               <span className="text-muted">Closed</span>
                             ) : (
                               <button
