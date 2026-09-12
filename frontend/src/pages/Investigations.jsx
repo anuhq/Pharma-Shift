@@ -34,8 +34,6 @@ function Investigations({ incidents, onSaved }) {
   const [message, setMessage] = useState('');
 
   const loadInvestigations = useCallback(async () => {
-    setLoading(true);
-
     try {
       const data = await requestJson(API_URL);
       setInvestigations(data.investigations || []);
@@ -45,9 +43,13 @@ function Investigations({ incidents, onSaved }) {
   }, []);
 
   useEffect(() => {
-    loadInvestigations().catch((requestError) => {
-      setError(requestError.message);
-    });
+    const timerId = window.setTimeout(() => {
+      void loadInvestigations().catch((requestError) => {
+        setError(requestError.message);
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timerId);
   }, [loadInvestigations]);
 
   function handleChange(event) {
@@ -66,12 +68,14 @@ function Investigations({ incidents, onSaved }) {
 
   function editInvestigation(investigation) {
     setEditingId(investigation.investigation_id);
+
     setForm({
       incident_id: String(investigation.incident_id),
       investigation_date: investigation.investigation_date,
       findings: investigation.findings,
       outcome: investigation.outcome || '',
     });
+
     setError('');
     setMessage('');
   }
@@ -169,6 +173,7 @@ function Investigations({ incidents, onSaved }) {
                     >
                       Incident
                     </label>
+
                     <select
                       id="investigation_incident"
                       name="incident_id"
@@ -179,14 +184,17 @@ function Investigations({ incidents, onSaved }) {
                       required
                     >
                       <option value="">Select incident</option>
+
                       {selectableIncidents.map((incident) => (
                         <option
                           key={incident.incident_id}
                           value={incident.incident_id}
                         >
                           #{incident.incident_id} — {incident.full_name}
-                          {' — '}{incident.category_name}
-                          {' — '}{incident.incident_date}
+                          {' — '}
+                          {incident.category_name}
+                          {' — '}
+                          {incident.incident_date}
                         </option>
                       ))}
                     </select>
@@ -214,6 +222,7 @@ function Investigations({ incidents, onSaved }) {
                     >
                       Investigation date
                     </label>
+
                     <input
                       id="investigation_date"
                       name="investigation_date"
@@ -233,6 +242,7 @@ function Investigations({ incidents, onSaved }) {
                     >
                       Findings
                     </label>
+
                     <textarea
                       id="investigation_findings"
                       name="findings"
@@ -252,6 +262,7 @@ function Investigations({ incidents, onSaved }) {
                     >
                       Outcome (optional)
                     </label>
+
                     <textarea
                       id="investigation_outcome"
                       name="outcome"
@@ -314,26 +325,34 @@ function Investigations({ incidents, onSaved }) {
                         <th>Action</th>
                       </tr>
                     </thead>
+
                     <tbody>
                       {investigations.map((investigation) => (
                         <tr key={investigation.investigation_id}>
                           <td>
                             #{investigation.incident_id}
-                            {' — '}{investigation.full_name}
+                            {' — '}
+                            {investigation.full_name}
+
                             <div className="small text-muted">
                               {investigation.category_name}
                             </div>
+
                             <div className="small">
                               {investigation.incident_status}
                             </div>
                           </td>
+
                           <td>{investigation.investigation_date}</td>
+
                           <td style={{ whiteSpace: 'pre-wrap' }}>
                             {investigation.findings}
                           </td>
+
                           <td style={{ whiteSpace: 'pre-wrap' }}>
                             {investigation.outcome || '—'}
                           </td>
+
                           <td>
                             {String(
                               investigation.incident_status,
