@@ -1,7 +1,60 @@
 const express = require('express');
 const pool = require('../config/db');
-
+const {
+  requireAuth,
+  requireRole,
+} = require('../middleware/authMiddleware');
 const router = express.Router();
+
+// Every roster request requires a login
+router.use(requireAuth);
+
+// Read only the logged-in employee's assignments
+router.get('/me', async (req, res) => {
+  const employeeId = Number(req.currentUser.employee_id);
+
+  if (!Number.isSafeInteger(employeeId) || employeeId <= 0) {
+    return res.status(403).json({
+      message: 'No valid employee account is available.',
+    });
+  }
+
+  try {
+    const [rosters] = await pool.query(
+      `
+        SELECT
+          r.roster_id,
+          r.employee_id,
+          e.full_name,
+          r.shift_type_id,
+          s.shift_name,
+          s.start_time,
+          s.end_time,
+          DATE_FORMAT(r.shift_date, '%Y-%m-%d') AS shift_date,
+          r.status
+        FROM shift_roster r
+        INNER JOIN employee e
+          ON r.employee_id = e.employee_id
+        INNER JOIN shift_type s
+          ON r.shift_type_id = s.shift_type_id
+        WHERE r.employee_id = ?
+        ORDER BY r.shift_date DESC, s.start_time
+      `,
+      [employeeId],
+    );
+
+    return res.status(200).json(rosters);
+  } catch (error) {
+    console.error('Own roster error:', error.code);
+
+    return res.status(500).json({
+      message: 'Unable to retrieve your assigned shifts.',
+    });
+  }
+});
+
+// All routes below this line remain manager-only
+router.use(requireRole('Owner/Manager'));
 
 // Get roster assignments with employee and shift details
 router.get('/', async (req, res) => {

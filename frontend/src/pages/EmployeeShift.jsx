@@ -2,11 +2,27 @@ import { useState } from 'react';
 import EmployeeManagement from '../components/employeeShift/EmployeeManagement';
 import ShiftTypeManagement from '../components/employeeShift/ShiftTypeManagement';
 import RosterManagement from '../components/employeeShift/RosterManagement';
-import AssignedShiftManagement from '../components/employeeShift/AssignedShiftManagement';
+import AssignedShiftManagement, {
+  MyAssignedShifts,
+} from '../components/employeeShift/AssignedShiftManagement';
+import { useAuth } from '../auth/useAuth';
 
 function EmployeeShift() {
   const [activeSection, setActiveSection] = useState('employees');
+  const { user, loading } = useAuth();
 
+  if (loading) {
+    return <p>Checking your session…</p>;
+  }
+
+  if (!user) {
+    return <p>Please log in to view your shifts.</p>;
+  }
+
+  // Managers keep the management tabs; staff see their own shifts
+  if (user.roleName !== 'Owner/Manager') {
+    return <MyAssignedShifts key={user.employeeId} />;
+  }
   const sections = [
     { id: 'employees', label: 'Employees' },
     { id: 'roles', label: 'Roles' },

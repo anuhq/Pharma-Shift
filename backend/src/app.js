@@ -61,12 +61,8 @@ app.use(
   shiftTypeRoutes,
 );
 
-app.use(
-  '/api/roster',
-  requireAuth,
-  requireRole('Owner/Manager'),
-  rosterRoutes,
-);
+// Roster permissions are checked inside the router
+app.use('/api/roster', rosterRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/incident-categories', incidentCategoryRoutes);
 

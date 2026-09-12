@@ -150,3 +150,92 @@ export default function AssignedShiftManagement() {
     </div>
   );
 }
+
+// Staff can view only their own assignments
+export function MyAssignedShifts() {
+  const [assignments, setAssignments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMyShifts() {
+      try {
+        // The backend gets the employee ID from the login session
+        const data = await request('/roster/me');
+
+        if (!cancelled) {
+          setAssignments(data);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError.message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadMyShifts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <section className="card border-0 shadow-sm">
+      <div className="card-body">
+        <h2 className="h4">My Assigned Shifts</h2>
+        <p className="text-muted">
+          View your scheduled shifts.
+        </p>
+
+        {loading && <p role="status">Loading your shifts…</p>}
+
+        {error && (
+          <div className="alert alert-danger" role="alert">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && (
+          assignments.length === 0 ? (
+            <div className="alert alert-info">
+              No shifts are assigned to you.
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Shift</th>
+                    <th>Time</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assignments.map((assignment) => (
+                    <tr key={assignment.roster_id}>
+                      <td>{assignment.shift_name}</td>
+                      <td>
+                        {assignment.start_time.slice(0, 5)}–
+                        {assignment.end_time.slice(0, 5)}
+                      </td>
+                      <td>{assignment.shift_date}</td>
+                      <td>{assignment.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </div>
+    </section>
+  );
+}
