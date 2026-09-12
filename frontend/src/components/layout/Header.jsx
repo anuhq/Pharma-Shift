@@ -1,4 +1,8 @@
+import { useAuth } from '../../auth/useAuth';
+
 function Header({ onMenuClick }) {
+  const { user, logout } = useAuth();
+
   return (
     <header className="app-header">
       <div className="container-fluid d-flex align-items-center justify-content-between px-3 px-lg-4">
@@ -21,8 +25,21 @@ function Header({ onMenuClick }) {
         </div>
 
         <div className="text-end">
-          <div className="fw-semibold">User</div>
-          <small className="text-secondary">Owner / Manager</small>
+          <div className="fw-semibold">
+            {user?.fullName || user?.username}
+          </div>
+
+          <small className="text-secondary d-block">
+            {user?.roleName}
+          </small>
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary mt-2"
+            onClick={logout}
+          >
+            Logout
+          </button>
         </div>
       </div>
     </header>
