@@ -94,8 +94,52 @@ async function createCheckIn(employeeId) {
   return getAttendanceById(result.insertId);
 }
 
+async function createCheckOut(employeeId) {
+  validateEmployeeId(employeeId);
+
+  // Find today's attendance before recording the check-out.
+  const [records] = await pool.execute(
+    `SELECT attendance_id, check_out_time
+     FROM attendance
+     WHERE employee_id = ?
+       AND attendance_date = CURDATE()
+     LIMIT 1`,
+    [employeeId]
+  );
+
+  if (records.length === 0) {
+    const error = new Error('Check-in is required before check-out.');
+    error.code = 'ATTENDANCE_NOT_FOUND';
+    throw error;
+  }
+
+  if (records[0].check_out_time !== null) {
+    const error = new Error('Check-out has already been recorded.');
+    error.code = 'ATTENDANCE_ALREADY_COMPLETED';
+    throw error;
+  }
+
+  const [result] = await pool.execute(
+    `UPDATE attendance
+     SET check_out_time = CURTIME(),
+         status = 'Present'
+     WHERE attendance_id = ?
+       AND check_out_time IS NULL`,
+    [records[0].attendance_id]
+  );
+
+  if (result.affectedRows !== 1) {
+    const error = new Error('Check-out has already been recorded.');
+    error.code = 'ATTENDANCE_ALREADY_COMPLETED';
+    throw error;
+  }
+
+  return getAttendanceById(records[0].attendance_id);
+}
+
 module.exports = {
   getAttendanceForEmployee,
   getAllAttendance,
   createCheckIn,
+  createCheckOut,
 };
