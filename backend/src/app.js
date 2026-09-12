@@ -3,6 +3,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 const healthRoutes = require('./routes/healthRoutes');
 const { sessionMiddleware } = require('./config/session');
+const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 
@@ -23,5 +24,24 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/health', healthRoutes);
+
+app.use('/api/auth', authRoutes);
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  console.error(
+    'Request failed:',
+    req.method,
+    req.path,
+    error.code || error.name || 'UNKNOWN_ERROR'
+  );
+
+  return res.status(500).json({
+    message: 'Internal server error.',
+  });
+});
 
 module.exports = app;
