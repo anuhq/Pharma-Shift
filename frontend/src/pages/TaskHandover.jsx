@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import AddTaskModal from '../components/tasks/AddTaskModal';
+import { getTasks } from '../services/taskApi';
 
 const sections = [
   {
@@ -35,62 +37,34 @@ function TaskHandover() {
   const [activeSectionId, setActiveSectionId] = useState('assignments');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskRecords, setTaskRecords] = useState([]);
-  const [taskFormData, setTaskFormData] = useState({
-    task: '',
-    assignedTo: '',
-    date: '',
-    dueTime: '',
-    priority: 'Medium',
-    status: 'Pending',
-  });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [reload, setReload] = useState(0);
 
-  const activeSection = sections.find(
-    (section) => section.id === activeSectionId,
-  );
+  const activeSection = sections.find((section) => section.id === activeSectionId);
 
-  const handleOpenTaskModal = () => {
-    setShowTaskModal(true);
-  };
+  useEffect(() => {
+    const controller = new AbortController();
+    getTasks(controller.signal)
+      .then(({ tasks }) => { setTaskRecords(tasks); setLoadError(''); })
+      .catch((error) => { if (error.name !== 'AbortError') setLoadError(error.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [reload]);
 
-  const handleCloseTaskModal = () => {
+  function refreshTasks() {
+    setLoading(true);
+    setLoadError('');
+    setReload((value) => value + 1);
+  }
+
+  function handleSaved(task) {
+    setTaskRecords((records) => [task, ...records].sort((a, b) =>
+      b.assigned_date.localeCompare(a.assigned_date) || b.assignment_id - a.assignment_id));
+    setSuccess('Task "' + task.title + '" saved successfully.');
     setShowTaskModal(false);
-    setTaskFormData({
-      task: '',
-      assignedTo: '',
-      date: '',
-      dueTime: '',
-      priority: 'Medium',
-      status: 'Pending',
-    });
-  };
-
-  const handleTaskFormChange = (event) => {
-    const { name, value } = event.target;
-
-    setTaskFormData((currentData) => ({
-      ...currentData,
-      [name]: value,
-    }));
-  };
-
-  const handleSaveTask = (event) => {
-    event.preventDefault();
-
-    setTaskRecords((currentRecords) => [
-      {
-        id: Date.now(),
-        task: taskFormData.task,
-        assignedTo: taskFormData.assignedTo,
-        date: taskFormData.date,
-        dueTime: taskFormData.dueTime,
-        priority: taskFormData.priority,
-        status: taskFormData.status,
-      },
-      ...currentRecords,
-    ]);
-
-    handleCloseTaskModal();
-  };
+  }
 
   return (
     <div>
@@ -145,13 +119,21 @@ function TaskHandover() {
               <button
                 type="button"
                 className="btn btn-success flex-shrink-0"
-                onClick={handleOpenTaskModal}
+                onClick={() => { setSuccess(''); setShowTaskModal(true); }}
+                disabled={loading}
               >
                 Add Task
               </button>
             )}
           </div>
 
+          {activeSectionId === 'assignments' && <>
+            {success && <div className="alert alert-success" role="status">{success}</div>}
+            {loadError && <div className="alert alert-danger" role="alert">{loadError}</div>}
+            <button type="button" className="btn btn-outline-secondary btn-sm mb-3" disabled={loading} onClick={refreshTasks}>
+              {loading ? 'Loading...' : 'Refresh tasks'}
+            </button>
+          </>}
           <div className="table-responsive">
             <table className="table align-middle mb-0">
               <caption className="visually-hidden">
@@ -171,11 +153,11 @@ function TaskHandover() {
               <tbody>
                 {activeSectionId === 'assignments' && taskRecords.length > 0 ? (
                   taskRecords.map((record) => (
-                    <tr key={record.id}>
-                      <td>{record.task}</td>
-                      <td>{record.assignedTo}</td>
-                      <td>{record.date || '—'}</td>
-                      <td>{record.dueTime || '—'}</td>
+                    <tr key={record.assignment_id}>
+                      <td><div>{record.title}</div>{record.description && <div className="small text-muted">{record.description}</div>}</td>
+                      <td>{record.employee_name || record.shift_name || 'Unassigned'}</td>
+                      <td>{record.assigned_date || '—'}</td>
+                      <td>{record.due_time || '—'}</td>
                       <td>{record.priority}</td>
                       <td>{record.status}</td>
                     </tr>
@@ -186,7 +168,7 @@ function TaskHandover() {
                       colSpan={activeSection.columns.length}
                       className="text-center text-muted py-5"
                     >
-                      Records have not been loaded.
+                      {activeSectionId === 'assignments' ? (loading ? 'Loading tasks...' : loadError ? 'Tasks could not be loaded. Use Refresh tasks to retry.' : 'No tasks yet. Click Add Task to create one.') : 'Records have not been loaded.'}
                     </td>
                   </tr>
                 )}
@@ -196,151 +178,8 @@ function TaskHandover() {
         </div>
       </section>
 
-      {showTaskModal && (
-        <>
-          <div
-            className="modal fade show d-block"
-            tabIndex="-1"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="add-task-modal-title"
-          >
-            <div className="modal-dialog modal-lg modal-dialog-centered" role="document">
-              <div className="modal-content">
-                <div className="modal-header">
-                  <h4 id="add-task-modal-title" className="modal-title">
-                    Add Task
-                  </h4>
-                  <button
-                    type="button"
-                    className="btn-close"
-                    aria-label="Close"
-                    onClick={handleCloseTaskModal}
-                  ></button>
-                </div>
+      {showTaskModal && <AddTaskModal onClose={() => setShowTaskModal(false)} onSaved={handleSaved} />}
 
-                <form onSubmit={handleSaveTask}>
-                  <div className="modal-body">
-                    <div className="row g-3">
-                      <div className="col-md-6">
-                        <label htmlFor="task" className="form-label">
-                          Task
-                        </label>
-                        <input
-                          id="task"
-                          name="task"
-                          type="text"
-                          className="form-control"
-                          placeholder="Enter task name"
-                          value={taskFormData.task}
-                          onChange={handleTaskFormChange}
-                          required
-                        />
-                      </div>
-
-                      <div className="col-md-6">
-                        <label htmlFor="assignedTo" className="form-label">
-                          Assigned To
-                        </label>
-                        <input
-                          id="assignedTo"
-                          name="assignedTo"
-                          type="text"
-                          className="form-control"
-                          placeholder="Enter employee or shift"
-                          value={taskFormData.assignedTo}
-                          onChange={handleTaskFormChange}
-                          required
-                        />
-                      </div>
-
-                      <div className="col-md-6">
-                        <label htmlFor="date" className="form-label">
-                          Date
-                        </label>
-                        <input
-                          id="date"
-                          name="date"
-                          type="date"
-                          className="form-control"
-                          value={taskFormData.date}
-                          onChange={handleTaskFormChange}
-                        />
-                      </div>
-
-                      <div className="col-md-6">
-                        <label htmlFor="dueTime" className="form-label">
-                          Due Time
-                        </label>
-                        <input
-                          id="dueTime"
-                          name="dueTime"
-                          type="time"
-                          className="form-control"
-                          value={taskFormData.dueTime}
-                          onChange={handleTaskFormChange}
-                        />
-                      </div>
-
-                      <div className="col-md-6">
-                        <label htmlFor="priority" className="form-label">
-                          Priority
-                        </label>
-                        <select
-                          id="priority"
-                          name="priority"
-                          className="form-select"
-                          value={taskFormData.priority}
-                          onChange={handleTaskFormChange}
-                        >
-                          <option value="Low">Low</option>
-                          <option value="Medium">Medium</option>
-                          <option value="High">High</option>
-                        </select>
-                      </div>
-
-                      <div className="col-md-6">
-                        <label htmlFor="status" className="form-label">
-                          Status
-                        </label>
-                        <select
-                          id="status"
-                          name="status"
-                          className="form-select"
-                          value={taskFormData.status}
-                          onChange={handleTaskFormChange}
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="In Progress">In Progress</option>
-                          <option value="Completed">Completed</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="modal-footer">
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={handleCloseTaskModal}
-                    >
-                      Cancel
-                    </button>
-                    <button type="submit" className="btn btn-success">
-                      Save Task
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="modal-backdrop fade show"
-            onClick={handleCloseTaskModal}
-          ></div>
-        </>
-      )}
     </div>
   );
 }

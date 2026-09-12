@@ -6,7 +6,7 @@ async function request(path, options = {}) {
     response = await fetch(`${baseUrl}/tasks${path}`, options);
   } catch (error) {
     if (error.name === 'AbortError') throw error;
-    throw new Error('Unable to reach the server. Check your connection and try again.');
+    throw new Error('Unable to reach the server. Check your connection and try again.', { cause: error });
   }
   const data = await response.json().catch(() => null);
   if (!response.ok || !data) {

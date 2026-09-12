@@ -209,3 +209,13 @@ body {
     display: none;
   }
 }
+
+.task-modal {
+  width: min(800px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+.task-modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}

@@ -16,7 +16,7 @@ function validateTask(body) {
   const date = input.assigned_date;
   const parsed = typeof date === 'string' ? new Date(`${date}T00:00:00Z`) : new Date(NaN);
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < '1000-01-01' || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) errors.assigned_date = 'Enter a valid date.';
-  const due_time = input.due_time || null;
+  const due_time = input.due_time === '' || input.due_time == null ? null : input.due_time;
   if (due_time !== null && (typeof due_time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(due_time))) errors.due_time = 'Enter a valid time (HH:mm).';
   if (!['Low', 'Medium', 'High'].includes(input.priority)) errors.priority = 'Select Low, Medium or High priority.';
   return { errors, value: { template_id, employee_id, shift_type_id, title, description, assigned_date: date, due_time, priority: input.priority } };
