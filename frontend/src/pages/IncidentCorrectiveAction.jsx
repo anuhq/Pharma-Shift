@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import Investigations from './Investigations';
 
 const API_BASE_URL = 'http://127.0.0.1:5000';
 
@@ -545,6 +546,8 @@ function IncidentCorrectiveAction() {
           </div>
         </div>
       </div>
+
+      <Investigations incidents={incidents} onSaved={loadData} />
     </div>
   );
 }
