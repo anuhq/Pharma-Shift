@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import Investigations from './Investigations';
+import CorrectiveActions from './CorrectiveActions';
 
 const API_BASE_URL = 'http://127.0.0.1:5000';
 
@@ -107,23 +108,27 @@ function IncidentCorrectiveAction() {
 
   function editCategory(category) {
     setEditingCategoryId(category.category_id);
+
     setCategoryForm({
       category_name: category.category_name,
       severity_level: category.severity_level,
       description: category.description || '',
     });
+
     setMessage('');
     setError('');
   }
 
   function editIncident(incident) {
     setEditingIncidentId(incident.incident_id);
+
     setIncidentForm({
       employee_id: String(incident.employee_id),
       category_id: String(incident.category_id),
       incident_date: incident.incident_date,
       description: incident.description,
     });
+
     setMessage('');
     setError('');
   }
@@ -135,6 +140,7 @@ function IncidentCorrectiveAction() {
     setMessage('');
 
     const isEditing = editingCategoryId !== null;
+
     const url = isEditing
       ? `${API_BASE_URL}/api/incident-categories/${editingCategoryId}`
       : `${API_BASE_URL}/api/incident-categories`;
@@ -170,6 +176,7 @@ function IncidentCorrectiveAction() {
     setMessage('');
 
     const isEditing = editingIncidentId !== null;
+
     const url = isEditing
       ? `${API_BASE_URL}/api/incidents/${editingIncidentId}`
       : `${API_BASE_URL}/api/incidents`;
@@ -554,6 +561,12 @@ function IncidentCorrectiveAction() {
       </div>
 
       <Investigations incidents={incidents} onSaved={loadData} />
+
+      <CorrectiveActions
+        incidents={incidents}
+        employees={employees}
+        onSaved={loadData}
+      />
     </div>
   );
 }
