@@ -6,6 +6,7 @@ const { sessionMiddleware } = require('./config/session');
 const authRoutes = require('./routes/authRoutes');
 const incidentCategoryRoutes = require('./routes/incidentCategoryRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
+const investigationRoutes = require('./routes/investigationRoutes');
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/incident-categories', incidentCategoryRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/investigations', investigationRoutes);
 
 app.use((error, req, res, next) => {
   if (res.headersSent) {
