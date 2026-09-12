@@ -14,7 +14,7 @@ function validateEmployeeId(employeeId) {
 async function getAttendanceForEmployee(employeeId) {
   validateEmployeeId(employeeId);
 
-  // Return only the selected employee's latest attendance records.
+  // Keep dates as text so timezone conversion cannot change the day.
   const [records] = await pool.execute(
     `SELECT
        a.attendance_id,
@@ -37,7 +37,6 @@ async function getAttendanceForEmployee(employeeId) {
 }
 
 async function getAllAttendance() {
-  // Managers use this list to review attendance for all employees.
   const [records] = await pool.execute(
     `SELECT
        a.attendance_id,
@@ -57,7 +56,46 @@ async function getAllAttendance() {
   return records;
 }
 
+async function getAttendanceById(attendanceId) {
+  const [records] = await pool.execute(
+    `SELECT
+       attendance_id,
+       employee_id,
+       DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
+       check_in_time,
+       check_out_time,
+       status,
+       correction_note
+     FROM attendance
+     WHERE attendance_id = ?`,
+    [attendanceId]
+  );
+
+  return records[0] || null;
+}
+
+async function createCheckIn(employeeId) {
+  validateEmployeeId(employeeId);
+
+  // The database records the current local date and time.
+  const [result] = await pool.execute(
+    `INSERT INTO attendance (
+       employee_id,
+       attendance_date,
+       check_in_time,
+       check_out_time,
+       status,
+       correction_note
+     )
+     VALUES (?, CURDATE(), CURTIME(), NULL, 'Checked In', NULL)`,
+    [employeeId]
+  );
+
+  return getAttendanceById(result.insertId);
+}
+
 module.exports = {
   getAttendanceForEmployee,
   getAllAttendance,
+  createCheckIn,
 };
