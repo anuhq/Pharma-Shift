@@ -13,6 +13,7 @@ const authRoutes = require('./routes/authRoutes');
 const incidentCategoryRoutes = require('./routes/incidentCategoryRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
 const investigationRoutes = require('./routes/investigationRoutes');
+const correctiveActionRoutes = require('./routes/correctiveActionRoutes');
 
 const app = express();
 
@@ -30,18 +31,17 @@ app.use(
   }),
 );
 
-// Read JSON request bodies
 app.use(express.json({ limit: '100kb' }));
 app.use(sessionMiddleware);
 
 app.get('/', (req, res) => {
-  res.status(200).json({ message: 'PharmaShift API is running' });
+  res.status(200).json({
+    message: 'PharmaShift API is running',
+  });
 });
 
-// Check the database connection
 app.use('/api/health', healthRoutes);
 
-// Employee and shift management is for logged-in managers
 app.use(
   '/api/employees',
   requireAuth,
@@ -63,12 +63,12 @@ app.use(
   shiftTypeRoutes,
 );
 
-// Roster permissions are checked inside the router
 app.use('/api/roster', rosterRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/incident-categories', incidentCategoryRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/investigations', investigationRoutes);
+app.use('/api/corrective-actions', correctiveActionRoutes);
 
 app.use((error, req, res, next) => {
   if (res.headersSent) {
@@ -86,4 +86,5 @@ app.use((error, req, res, next) => {
     message: 'Internal server error.',
   });
 });
+
 module.exports = app;
