@@ -137,9 +137,42 @@ async function createCheckOut(employeeId) {
   return getAttendanceById(records[0].attendance_id);
 }
 
+async function correctAttendance(
+  attendanceId,
+  checkInTime,
+  checkOutTime,
+  correctionNote
+) {
+  const status = checkOutTime ? 'Present' : 'Checked In';
+
+  // Save the manager's corrected times and reason.
+  const [result] = await pool.execute(
+    `UPDATE attendance
+     SET check_in_time = ?,
+         check_out_time = ?,
+         status = ?,
+         correction_note = ?
+     WHERE attendance_id = ?`,
+    [
+      checkInTime,
+      checkOutTime,
+      status,
+      correctionNote,
+      attendanceId,
+    ]
+  );
+
+  if (result.affectedRows === 0) {
+    return null;
+  }
+
+  return getAttendanceById(attendanceId);
+}
+
 module.exports = {
   getAttendanceForEmployee,
   getAllAttendance,
   createCheckIn,
   createCheckOut,
+  correctAttendance,
 };
