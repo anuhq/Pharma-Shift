@@ -2,38 +2,67 @@ import { useCallback, useEffect, useState } from 'react';
 
 const API_BASE_URL = 'http://127.0.0.1:5000';
 
-const emptyForm = {
+const emptyCategory = {
   category_name: '',
   severity_level: 'Low',
   description: '',
 };
 
+const emptyIncident = {
+  employee_id: '',
+  category_id: '',
+  incident_date: '',
+  description: '',
+};
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Request failed.');
+  }
+
+  return data;
+}
+
 function IncidentCorrectiveAction() {
   const [categories, setCategories] = useState([]);
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [incidents, setIncidents] = useState([]);
+
+  const [categoryForm, setCategoryForm] = useState(emptyCategory);
+  const [incidentForm, setIncidentForm] = useState(emptyIncident);
+
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [editingIncidentId, setEditingIncidentId] = useState(null);
+
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [savingIncident, setSavingIncident] = useState(false);
+
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const loadCategories = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/incident-categories`,
-        { credentials: 'include' },
-      );
+      const [categoryData, employeeData, incidentData] =
+        await Promise.all([
+          requestJson(`${API_BASE_URL}/api/incident-categories`),
+          requestJson(`${API_BASE_URL}/api/incidents/employees`),
+          requestJson(`${API_BASE_URL}/api/incidents`),
+        ]);
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Unable to load categories.');
-      }
-
-      setCategories(data.categories || []);
+      setCategories(categoryData.categories || []);
+      setEmployees(employeeData.employees || []);
+      setIncidents(incidentData.incidents || []);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -42,26 +71,40 @@ function IncidentCorrectiveAction() {
   }, []);
 
   useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
+    loadData();
+  }, [loadData]);
 
-  function handleChange(event) {
+  function handleCategoryChange(event) {
     const { name, value } = event.target;
 
-    setForm((currentForm) => ({
-      ...currentForm,
+    setCategoryForm((current) => ({
+      ...current,
       [name]: value,
     }));
   }
 
-  function resetForm() {
-    setForm(emptyForm);
-    setEditingId(null);
+  function handleIncidentChange(event) {
+    const { name, value } = event.target;
+
+    setIncidentForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
   }
 
-  function startEditing(category) {
-    setEditingId(category.category_id);
-    setForm({
+  function resetCategoryForm() {
+    setCategoryForm(emptyCategory);
+    setEditingCategoryId(null);
+  }
+
+  function resetIncidentForm() {
+    setIncidentForm(emptyIncident);
+    setEditingIncidentId(null);
+  }
+
+  function editCategory(category) {
+    setEditingCategoryId(category.category_id);
+    setCategoryForm({
       category_name: category.category_name,
       severity_level: category.severity_level,
       description: category.description || '',
@@ -70,32 +113,37 @@ function IncidentCorrectiveAction() {
     setError('');
   }
 
-  async function handleSubmit(event) {
+  function editIncident(incident) {
+    setEditingIncidentId(incident.incident_id);
+    setIncidentForm({
+      employee_id: String(incident.employee_id),
+      category_id: String(incident.category_id),
+      incident_date: incident.incident_date,
+      description: incident.description,
+    });
+    setMessage('');
+    setError('');
+  }
+
+  async function submitCategory(event) {
     event.preventDefault();
-    setSaving(true);
+    setSavingCategory(true);
     setError('');
     setMessage('');
 
-    const isEditing = editingId !== null;
+    const isEditing = editingCategoryId !== null;
     const url = isEditing
-      ? `${API_BASE_URL}/api/incident-categories/${editingId}`
+      ? `${API_BASE_URL}/api/incident-categories/${editingCategoryId}`
       : `${API_BASE_URL}/api/incident-categories`;
 
     try {
-      const response = await fetch(url, {
+      await requestJson(url, {
         method: isEditing ? 'PUT' : 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(categoryForm),
       });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Unable to save category.');
-      }
 
       setMessage(
         isEditing
@@ -103,12 +151,47 @@ function IncidentCorrectiveAction() {
           : 'Category created successfully.',
       );
 
-      resetForm();
-      await loadCategories();
+      resetCategoryForm();
+      await loadData();
     } catch (requestError) {
       setError(requestError.message);
     } finally {
-      setSaving(false);
+      setSavingCategory(false);
+    }
+  }
+
+  async function submitIncident(event) {
+    event.preventDefault();
+    setSavingIncident(true);
+    setError('');
+    setMessage('');
+
+    const isEditing = editingIncidentId !== null;
+    const url = isEditing
+      ? `${API_BASE_URL}/api/incidents/${editingIncidentId}`
+      : `${API_BASE_URL}/api/incidents`;
+
+    try {
+      await requestJson(url, {
+        method: isEditing ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(incidentForm),
+      });
+
+      setMessage(
+        isEditing
+          ? 'Incident updated successfully.'
+          : 'Incident recorded successfully.',
+      );
+
+      resetIncidentForm();
+      await loadData();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSavingIncident(false);
     }
   }
 
@@ -123,29 +206,29 @@ function IncidentCorrectiveAction() {
         </p>
       </div>
 
+      {error && (
+        <div className="alert alert-danger" role="alert">
+          {error}
+        </div>
+      )}
+
+      {message && (
+        <div className="alert alert-success" role="alert">
+          {message}
+        </div>
+      )}
+
       <div className="row g-4">
         <div className="col-12 col-lg-5">
           <div className="card border-0 shadow-sm">
             <div className="card-body">
               <h4 className="mb-3">
-                {editingId === null
+                {editingCategoryId === null
                   ? 'Add Incident Category'
                   : 'Edit Incident Category'}
               </h4>
 
-              {error && (
-                <div className="alert alert-danger" role="alert">
-                  {error}
-                </div>
-              )}
-
-              {message && (
-                <div className="alert alert-success" role="alert">
-                  {message}
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit}>
+              <form onSubmit={submitCategory}>
                 <div className="mb-3">
                   <label
                     className="form-label"
@@ -157,8 +240,8 @@ function IncidentCorrectiveAction() {
                     id="category_name"
                     name="category_name"
                     className="form-control"
-                    value={form.category_name}
-                    onChange={handleChange}
+                    value={categoryForm.category_name}
+                    onChange={handleCategoryChange}
                     maxLength={100}
                     required
                   />
@@ -175,8 +258,8 @@ function IncidentCorrectiveAction() {
                     id="severity_level"
                     name="severity_level"
                     className="form-select"
-                    value={form.severity_level}
-                    onChange={handleChange}
+                    value={categoryForm.severity_level}
+                    onChange={handleCategoryChange}
                     required
                   >
                     <option value="Low">Low</option>
@@ -188,17 +271,17 @@ function IncidentCorrectiveAction() {
                 <div className="mb-3">
                   <label
                     className="form-label"
-                    htmlFor="description"
+                    htmlFor="category_description"
                   >
                     Description
                   </label>
                   <textarea
-                    id="description"
+                    id="category_description"
                     name="description"
                     className="form-control"
                     rows="3"
-                    value={form.description}
-                    onChange={handleChange}
+                    value={categoryForm.description}
+                    onChange={handleCategoryChange}
                     maxLength={255}
                   />
                 </div>
@@ -206,21 +289,21 @@ function IncidentCorrectiveAction() {
                 <button
                   type="submit"
                   className="btn btn-primary me-2"
-                  disabled={saving}
+                  disabled={savingCategory}
                 >
-                  {saving
+                  {savingCategory
                     ? 'Saving...'
-                    : editingId === null
+                    : editingCategoryId === null
                       ? 'Add Category'
                       : 'Update Category'}
                 </button>
 
-                {editingId !== null && (
+                {editingCategoryId !== null && (
                   <button
                     type="button"
                     className="btn btn-outline-secondary"
-                    onClick={resetForm}
-                    disabled={saving}
+                    onClick={resetCategoryForm}
+                    disabled={savingCategory}
                   >
                     Cancel
                   </button>
@@ -233,23 +316,10 @@ function IncidentCorrectiveAction() {
         <div className="col-12 col-lg-7">
           <div className="card border-0 shadow-sm">
             <div className="card-body">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <h4 className="mb-0">Incident Categories</h4>
-
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-primary"
-                  onClick={loadCategories}
-                  disabled={loading}
-                >
-                  Refresh
-                </button>
-              </div>
+              <h4 className="mb-3">Incident Categories</h4>
 
               {loading ? (
-                <p className="text-muted">Loading categories...</p>
-              ) : categories.length === 0 ? (
-                <p className="text-muted">No categories found.</p>
+                <p className="text-muted">Loading...</p>
               ) : (
                 <div className="table-responsive">
                   <table className="table table-bordered align-middle">
@@ -271,10 +341,199 @@ function IncidentCorrectiveAction() {
                             <button
                               type="button"
                               className="btn btn-sm btn-outline-secondary"
-                              onClick={() => startEditing(category)}
+                              onClick={() => editCategory(category)}
                             >
                               Edit
                             </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="row g-4 mt-1">
+        <div className="col-12 col-lg-5">
+          <div className="card border-0 shadow-sm">
+            <div className="card-body">
+              <h4 className="mb-3">
+                {editingIncidentId === null
+                  ? 'Record Incident'
+                  : 'Edit Incident'}
+              </h4>
+
+              <form onSubmit={submitIncident}>
+                <div className="mb-3">
+                  <label
+                    className="form-label"
+                    htmlFor="employee_id"
+                  >
+                    Employee
+                  </label>
+                  <select
+                    id="employee_id"
+                    name="employee_id"
+                    className="form-select"
+                    value={incidentForm.employee_id}
+                    onChange={handleIncidentChange}
+                    required
+                  >
+                    <option value="">Select employee</option>
+                    {employees.map((employee) => (
+                      <option
+                        key={employee.employee_id}
+                        value={employee.employee_id}
+                      >
+                        {employee.full_name} ({employee.status})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-3">
+                  <label
+                    className="form-label"
+                    htmlFor="incident_category_id"
+                  >
+                    Incident category
+                  </label>
+                  <select
+                    id="incident_category_id"
+                    name="category_id"
+                    className="form-select"
+                    value={incidentForm.category_id}
+                    onChange={handleIncidentChange}
+                    required
+                  >
+                    <option value="">Select category</option>
+                    {categories.map((category) => (
+                      <option
+                        key={category.category_id}
+                        value={category.category_id}
+                      >
+                        {category.category_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-3">
+                  <label
+                    className="form-label"
+                    htmlFor="incident_date"
+                  >
+                    Incident date
+                  </label>
+                  <input
+                    id="incident_date"
+                    name="incident_date"
+                    type="date"
+                    className="form-control"
+                    value={incidentForm.incident_date}
+                    onChange={handleIncidentChange}
+                    required
+                  />
+                </div>
+
+                <div className="mb-3">
+                  <label
+                    className="form-label"
+                    htmlFor="incident_description"
+                  >
+                    Incident description
+                  </label>
+                  <textarea
+                    id="incident_description"
+                    name="description"
+                    className="form-control"
+                    rows="4"
+                    value={incidentForm.description}
+                    onChange={handleIncidentChange}
+                    maxLength={500}
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary me-2"
+                  disabled={savingIncident}
+                >
+                  {savingIncident
+                    ? 'Saving...'
+                    : editingIncidentId === null
+                      ? 'Record Incident'
+                      : 'Update Incident'}
+                </button>
+
+                {editingIncidentId !== null && (
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={resetIncidentForm}
+                    disabled={savingIncident}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-12 col-lg-7">
+          <div className="card border-0 shadow-sm">
+            <div className="card-body">
+              <h4 className="mb-3">Incident Records</h4>
+
+              {loading ? (
+                <p className="text-muted">Loading...</p>
+              ) : incidents.length === 0 ? (
+                <p className="text-muted">No incidents found.</p>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-bordered align-middle">
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>Category</th>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {incidents.map((incident) => (
+                        <tr key={incident.incident_id}>
+                          <td>{incident.full_name}</td>
+                          <td>
+                            {incident.category_name}
+                            <br />
+                            <small className="text-muted">
+                              {incident.severity_level}
+                            </small>
+                          </td>
+                          <td>{incident.incident_date}</td>
+                          <td>{incident.description}</td>
+                          <td>{incident.status}</td>
+                          <td>
+                            {incident.status.toLowerCase() === 'closed' ? (
+                              <span className="text-muted">Closed</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={() => editIncident(incident)}
+                              >
+                                Edit
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
