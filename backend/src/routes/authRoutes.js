@@ -88,8 +88,8 @@ router.post('/login', loginLimiter, async (req, res, next) => {
 
     const accountIsActive =
       account &&
-      account.user_status === 'Active' &&
-      account.employee_status === 'Active';
+      String(account.user_status || '').toLowerCase() === 'active' &&
+      String(account.employee_status || '').toLowerCase() === 'active';
 
     if (!passwordMatches || !accountIsActive) {
       return res.status(401).json({

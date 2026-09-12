@@ -33,13 +33,14 @@ async function requireAuth(req, res, next) {
   try {
     const account = await findAccountById(userId);
 
-    if (
-      !account ||
-      account.user_status !== 'Active' ||
-      account.employee_status !== 'Active'
-    ) {
-      return rejectSession(req, res);
-    }
+  const accountIsActive =
+    account &&
+    String(account.user_status || '').toLowerCase() === 'active' &&
+    String(account.employee_status || '').toLowerCase() === 'active';
+
+  if (!accountIsActive) {
+    return rejectSession(req, res);
+}
 
     req.currentUser = account;
     return next();
