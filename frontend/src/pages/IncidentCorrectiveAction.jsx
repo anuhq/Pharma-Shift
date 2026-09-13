@@ -1,8 +1,9 @@
+import { API_BASE_URL } from '../api/config';
 import { useCallback, useEffect, useState } from 'react';
 import Investigations from './Investigations';
 import CorrectiveActions from './CorrectiveActions';
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
+
 
 const emptyCategory = {
   category_name: '',

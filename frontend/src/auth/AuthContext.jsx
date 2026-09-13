@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../api/config';
 import {
   useCallback,
   useEffect,
@@ -6,8 +7,7 @@ import {
 } from 'react';
 import { AuthContext } from './authStore';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
+
 
 async function readResponse(response) {
   const data = await response.json().catch(() => ({}));
