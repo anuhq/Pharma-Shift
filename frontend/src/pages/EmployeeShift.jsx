@@ -1,8 +1,29 @@
 import { useState } from 'react';
+import EmployeeManagement from '../components/employeeShift/EmployeeManagement';
+import ShiftTypeManagement from '../components/employeeShift/ShiftTypeManagement';
+import RosterManagement from '../components/employeeShift/RosterManagement';
+import AssignedShiftManagement, {
+  MyAssignedShifts,
+} from '../components/employeeShift/AssignedShiftManagement';
+import { useAuth } from '../auth/useAuth';
+import RoleManagement from '../components/employeeShift/RoleManagement';
 
 function EmployeeShift() {
   const [activeSection, setActiveSection] = useState('employees');
+  const { user, loading } = useAuth();
 
+  if (loading) {
+    return <p>Checking your session…</p>;
+  }
+
+  if (!user) {
+    return <p>Please log in to view your shifts.</p>;
+  }
+
+  // Managers keep the management tabs; staff see their own shifts
+  if (user.roleName !== 'Owner/Manager') {
+    return <MyAssignedShifts key={user.employeeId} />;
+  }
   const sections = [
     { id: 'employees', label: 'Employees' },
     { id: 'roles', label: 'Roles' },
@@ -48,150 +69,28 @@ function EmployeeShift() {
   );
 }
 
+// Show the employee interface connected to the API
 function EmployeeSection() {
-  return (
-    <div className="card border-0 shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h3 className="h5 mb-1">Employees</h3>
-            <p className="text-muted mb-0">
-              Add and manage pharmacy employee records.
-            </p>
-          </div>
-          <button type="button" className="btn btn-success">
-            Add Employee
-          </button>
-        </div>
-
-        <div className="alert alert-info mb-0">
-          Employee records will be connected to MySQL in the next development stage.
-        </div>
-      </div>
-    </div>
-  );
+  return <EmployeeManagement />;
 }
 
+// Show employee roles from the database
 function RolesSection() {
-  return (
-    <div className="card border-0 shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h3 className="h5 mb-1">Employee Roles</h3>
-            <p className="text-muted mb-0">
-              View the roles used in the pharmacy.
-            </p>
-          </div>
-          <button type="button" className="btn btn-success">
-            Add Role
-          </button>
-        </div>
-
-        <div className="table-responsive">
-          <table className="table align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>Description</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Pharmacist</td>
-                <td>Manages medicines and pharmacy services</td>
-                <td>
-                  <span className="badge text-bg-success">Active</span>
-                </td>
-              </tr>
-              <tr>
-                <td>Pharmacy Assistant</td>
-                <td>Supports daily pharmacy operations</td>
-                <td>
-                  <span className="badge text-bg-success">Active</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+  return <RoleManagement />;
 }
 
+// Show shift types connected to the API
 function ShiftTypesSection() {
-  return (
-    <div className="card border-0 shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h3 className="h5 mb-1">Shift Types</h3>
-            <p className="text-muted mb-0">
-              Define the working times used in rosters.
-            </p>
-          </div>
-          <button type="button" className="btn btn-success">
-            Add Shift Type
-          </button>
-        </div>
-
-        <div className="table-responsive">
-          <table className="table align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Shift</th>
-                <th>Start Time</th>
-                <th>End Time</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Morning Shift</td>
-                <td>08:00</td>
-                <td>16:00</td>
-                <td>
-                  <span className="badge text-bg-success">Active</span>
-                </td>
-              </tr>
-              <tr>
-                <td>Evening Shift</td>
-                <td>16:00</td>
-                <td>22:00</td>
-                <td>
-                  <span className="badge text-bg-success">Active</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+  return <ShiftTypeManagement />;
 }
 
+// Show roster assignment and assigned-shift viewing
 function RosterSection() {
   return (
-    <div className="card border-0 shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h3 className="h5 mb-1">Work Roster</h3>
-            <p className="text-muted mb-0">
-              Assign employees to shifts and dates.
-            </p>
-          </div>
-          <button type="button" className="btn btn-success">
-            Assign Shift
-          </button>
-        </div>
-
-        <div className="alert alert-secondary mb-0">
-          Roster assignments will be connected to employees and shift types in the database.
-        </div>
-      </div>
-    </div>
+    <>
+      <RosterManagement />
+      <AssignedShiftManagement />
+    </>
   );
 }
 
