@@ -10,6 +10,7 @@ const rosterRoutes = require('./routes/rosterRoutes');
 
 const { sessionMiddleware } = require('./config/session');
 const authRoutes = require('./routes/authRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
 const incidentCategoryRoutes = require('./routes/incidentCategoryRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
 const investigationRoutes = require('./routes/investigationRoutes');
@@ -32,6 +33,8 @@ app.use(
 );
 
 app.use(express.json({ limit: '100kb' }));
+
+// Load the session before checking access to protected routes.
 app.use(sessionMiddleware);
 
 app.get('/', (req, res) => {
@@ -65,11 +68,13 @@ app.use(
 
 app.use('/api/roster', rosterRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/attendance', attendanceRoutes);
 app.use('/api/incident-categories', incidentCategoryRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/investigations', investigationRoutes);
 app.use('/api/corrective-actions', correctiveActionRoutes);
 
+// Keep the error handler after all routes.
 app.use((error, req, res, next) => {
   if (res.headersSent) {
     return next(error);
