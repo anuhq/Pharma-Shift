@@ -40,6 +40,16 @@ test('rejects malformed values, impossible dates and ambiguous assignees', () =>
 
 // Isolate HTTP behavior from the configured MySQL database.
 require.cache[require.resolve('../src/config/db')] = { exports: {} };
+// Task HTTP tests use an isolated session store, not the application's MySQL store.
+require.cache[require.resolve('../src/config/session')] = {
+  exports: {
+    sessionMiddleware: require('express-session')({
+      secret: 'task-api-tests-only-session-secret',
+      resave: false,
+      saveUninitialized: false,
+    }),
+  },
+};
 const model = require('../src/models/taskModel');
 const records = [];
 model.list = async () => records;

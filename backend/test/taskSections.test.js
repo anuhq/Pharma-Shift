@@ -47,6 +47,16 @@ test('rejects invalid section form fields and impossible dates', () => {
 test('MySQL API creates and reads linked checklists, templates and handovers', { skip: process.env.TASK_DB_TEST !== '1' }, async () => {
   require('dotenv').config({ quiet: true });
   const pool = require('../src/config/db');
+  // This test exercises task persistence, with sessions isolated from MySQL.
+  require.cache[require.resolve('../src/config/session')] = {
+    exports: {
+      sessionMiddleware: require('express-session')({
+        secret: 'task-section-tests-only-session-secret',
+        resave: false,
+        saveUninitialized: false,
+      }),
+    },
+  };
   const app = require('../src/app');
   const marker = `Temporary section verification ${Date.now()}`;
   let server;
