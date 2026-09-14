@@ -45,7 +45,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/health', healthRoutes);
-app.use('/api/tasks', taskRoutes);
+app.use('/api/tasks', requireAuth, taskRoutes);
 
 app.use(
   '/api/employees',

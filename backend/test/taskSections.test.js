@@ -67,6 +67,7 @@ test('MySQL API creates and reads linked checklists, templates and handovers', {
     const base = `http://127.0.0.1:${server.address().port}/api/tasks`;
     const options = await fetch(`${base}/options`).then((response) => response.json());
     assert.ok(options.employees.length && options.shifts.length, 'An active employee and shift are needed for this opt-in test.');
+    assert.ok(options.users.length, 'An active registered user is needed for assignment tests.');
     const employeeId = options.employees[0].employee_id;
     const shiftId = options.shifts[0].shift_type_id;
     async function create(section, body, table, idField) {
@@ -94,11 +95,29 @@ test('MySQL API creates and reads linked checklists, templates and handovers', {
     assert.ok(updated.templates.some((item) => item.template_id === template.template_id));
     assert.ok(updated.checklists.some((item) => item.checklist_id === checklist.checklist_id));
     const assignmentResponse = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      template_id: template.template_id, employee_id: employeeId, assigned_date: '2026-09-12', priority: 'Medium',
+      template_id: template.template_id, employee_id: options.users[0].employee_id, assigned_date: '2026-09-12', priority: 'Medium',
     }) });
     assert.equal(assignmentResponse.status, 201);
     const { task: assignment } = await assignmentResponse.json();
     created.push(['task_assignment', 'assignment_id', assignment.assignment_id]);
+    if (options.users.length) {
+      const selected = options.users[0];
+      const response = await fetch(`${base}/${assignment.assignment_id}/assignee`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: selected.user_id }),
+      });
+      assert.equal(response.status, 200);
+      const reloaded = await fetch(`${base}/${assignment.assignment_id}`).then((res) => res.json());
+      assert.equal(reloaded.task.employee_id, selected.employee_id);
+      assert.equal(reloaded.task.shift_type_id, null);
+      assert.equal(reloaded.task.employee_name, selected.full_name);
+      assert.equal(reloaded.task.template_id, template.template_id);
+      const invalid = await fetch(`${base}/${assignment.assignment_id}/assignee`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: 2147483647 }),
+      });
+      assert.equal(invalid.status, 400);
+      const unchanged = await fetch(`${base}/${assignment.assignment_id}`).then((res) => res.json());
+      assert.equal(unchanged.task.employee_id, selected.employee_id);
+    }
     for (const status of ['In Progress', 'Completed', 'Completed']) {
       const response = await fetch(`${base}/${assignment.assignment_id}/progress`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },

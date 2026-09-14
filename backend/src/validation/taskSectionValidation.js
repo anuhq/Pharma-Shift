@@ -34,7 +34,17 @@ function validateSection(section, body) {
     priority();
     const date = input.handover_date;
     const parsed = typeof date === 'string' ? new Date(`${date}T00:00:00Z`) : new Date(NaN);
-    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < '1000-01-01' || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) errors.handover_date = 'Enter a valid handover date.';
+        if (
+      typeof date !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      date < '2020-01-01' ||
+      date > '2100-12-31' ||
+      Number.isNaN(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== date
+    ) {
+      errors.handover_date =
+        'Enter a valid date between 2020 and 2100.';
+    }
     value.handover_date = date;
     value.status = 'Open';
   } else {

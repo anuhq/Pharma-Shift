@@ -3,9 +3,15 @@ import { getTaskSection } from '../../services/taskApi';
 import TaskSectionModal from './TaskSectionModal';
 import { taskSections } from './taskSections';
 import TaskBadge from './TaskBadge';
+import { useAuth } from '../../auth/useAuth';
 
 export default function TaskSectionRecords({ section }) {
   const config = taskSections[section.id];
+  const { user } = useAuth();
+
+  const canCreate =
+    user?.roleName === 'Owner/Manager' ||
+    section.id === 'handovers';
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -37,7 +43,19 @@ export default function TaskSectionRecords({ section }) {
             <h3 id="task-handover-section-title" className="h5 mb-2">{section.title}</h3>
             <p className="text-muted mb-0">{section.description}</p>
           </div>
-          <button type="button" className="btn btn-success flex-shrink-0" disabled={loading} onClick={() => { setSuccess(''); setShowModal(true); }}>Add {config.label}</button>
+          {canCreate && (
+              <button
+                type="button"
+                className="btn btn-success flex-shrink-0"
+                disabled={loading}
+                onClick={() => {
+                  setSuccess('');
+                  setShowModal(true);
+                }}
+              >
+                Add {config.label}
+              </button>
+            )}
         </div>
         {success && <div className="alert alert-success" role="status">{success}</div>}
         {error && <div className="alert alert-danger" role="alert">{error}</div>}

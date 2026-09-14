@@ -3,7 +3,10 @@ const baseUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 async function request(path, options = {}) {
   let response;
   try {
-    response = await fetch(`${baseUrl}/tasks${path}`, options);
+    response = await fetch(`${baseUrl}/tasks${path}`, {
+  credentials: 'include',
+  ...options,
+});
   } catch (error) {
     if (error.name === 'AbortError') throw error;
     throw new Error('Unable to reach the server. Check your connection and try again.', { cause: error });
@@ -18,6 +21,9 @@ async function request(path, options = {}) {
 }
 
 export const getTasks = (signal) => request('', { signal });
+export const updateTaskAssignee = (id, userId) => request(`/${id}/assignee`, {
+  method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId }),
+});
 export const updateTaskProgress = (id, progress) => request(`/${id}/progress`, {
   method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(progress),
 });
@@ -29,3 +35,5 @@ export const getTaskOptions = (signal) => request('/options', { signal });
 export const createTask = (task) => request('', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(task),
 });
+export const getHandoverOptions = (signal) =>
+  request('/handover-options', { signal });

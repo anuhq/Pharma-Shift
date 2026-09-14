@@ -23,8 +23,7 @@ export const taskSections = {
   handovers: {
     label: 'Shift Handover', id: 'handover_id', status: 'Open',
     fields: [
-      { name: 'employee_id', label: 'Recorded by', type: 'select', source: 'employees', id: 'employee_id', display: 'full_name' },
-      { ...shift, name: 'to_shift_type_id', label: 'Next shift' },
+      {...shift,name: 'to_shift_type_id',label: 'Next shift',},
       { name: 'handover_date', label: 'Handover date', type: 'date' }, priority,
       { name: 'notes', label: 'Handover notes', type: 'textarea', maxLength: 500 },
     ],

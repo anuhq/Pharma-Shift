@@ -50,7 +50,7 @@ export default function TaskProgressModal({ task, onClose, onSaved }) {
       <form onSubmit={submit}>
         <div className="modal-body p-3">
           <p className="fw-semibold mb-1">{task.title}</p>
-          <p className="small">Assigned to: {task.employee_name || task.shift_name || 'Unassigned'}</p>
+          <p className="small">Assigned to: {task.employee_name || 'Select a user in the task table'}</p>
           {error && <div className="alert alert-danger" role="alert">{error}</div>}
           <fieldset disabled={saving}>
             <legend className="visually-hidden">Progress details</legend>

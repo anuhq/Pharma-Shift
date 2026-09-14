@@ -17,11 +17,12 @@ test('progress validation allows supported statuses and bounded notes only', () 
 
 const valid = { title: ' Check stock ', employee_id: 1, assigned_date: '2026-09-12', priority: 'Medium', due_time: '09:30' };
 
-test('accepts employee and shift tasks, trims text and supports existing templates', () => {
+test('accepts user tasks, trims text and supports existing templates', () => {
   const result = validateTask(valid);
   assert.deepEqual(result.errors, {});
   assert.equal(result.value.title, 'Check stock');
-  assert.deepEqual(validateTask({ ...valid, title: undefined, template_id: 2, employee_id: null, shift_type_id: 3 }).errors, {});
+  assert.deepEqual(validateTask({ ...valid, title: undefined, template_id: 2 }).errors, {});
+  assert.ok(validateTask({ ...valid, employee_id: null, shift_type_id: 3 }).errors.shift_type_id);
   assert.deepEqual(validateTask({ ...valid, due_time: null }).errors, {});
   assert.deepEqual(validateTask({ ...valid, assigned_date: '2028-02-29' }).errors, {});
 });
@@ -32,7 +33,7 @@ test('rejects malformed values, impossible dates and ambiguous assignees', () =>
     { ...valid, assigned_date: '0000-01-01' }, { ...valid, due_time: '24:00' },
     { ...valid, due_time: false }, { ...valid, employee_id: '1 OR 1=1' },
     { ...valid, shift_type_id: 2 }, { ...valid, employee_id: null },
-    { ...valid, priority: 'Urgent' }, { ...valid, title: 'a'.repeat(101) },
+    { ...valid, priority: 'Urgent' }, { ...valid, title: 'a'.repeat(101) }, { ...valid, assigned_date: '7721-05-10' },
     { ...valid, description: 'a'.repeat(256) }]) {
     assert.ok(Object.keys(validateTask(body).errors).length, JSON.stringify(body));
   }
@@ -40,20 +41,58 @@ test('rejects malformed values, impossible dates and ambiguous assignees', () =>
 
 // Isolate HTTP behavior from the configured MySQL database.
 require.cache[require.resolve('../src/config/db')] = { exports: {} };
-// Task HTTP tests use an isolated session store, not the application's MySQL store.
+// Give isolated HTTP tests a fake authenticated manager.
+// This affects tests only and does not bypass production authentication.
 require.cache[require.resolve('../src/config/session')] = {
   exports: {
-    sessionMiddleware: require('express-session')({
-      secret: 'task-api-tests-only-session-secret',
-      resave: false,
-      saveUninitialized: false,
-    }),
+    sessionMiddleware(req, res, next) {
+      req.session = {
+        user: { userId: 1 },
+
+        regenerate(callback) {
+          callback();
+        },
+
+        save(callback) {
+          callback();
+        },
+
+        destroy(callback) {
+          callback();
+        },
+      };
+
+      next();
+    },
   },
 };
-const model = require('../src/models/taskModel');
+
+require.cache[require.resolve('../src/models/authModel')] = {
+  exports: {
+    async findAccountById() {
+      return {
+        user_id: 1,
+        employee_id: 1,
+        username: 'manager.test',
+        full_name: 'Test Manager',
+        role_name: 'Owner/Manager',
+        user_status: 'Active',
+        employee_status: 'Active',
+      };
+    },
+  },
+};
+ model = require('../src/models/taskModel');
 const records = [];
 model.list = async () => records;
 model.find = async (id) => records.find((task) => task.assignment_id === id);
+model.updateAssignee = async (id, userId) => {
+  const record = records.find((task) => task.assignment_id === id);
+  if (!record) return null;
+  if (userId !== 1) throw Object.assign(new Error('User unavailable.'), { status: 400 });
+  Object.assign(record, { employee_id: 1, shift_type_id: null });
+  return record;
+};
 model.updateProgress = async (id, progress) => {
   const record = records.find((task) => task.assignment_id === id);
   if (!record) return null;
@@ -120,4 +159,22 @@ test('progress endpoint updates only progress fields and handles bad requests', 
   assert.equal((await patch(2147483647, { status: 'Completed' })).status, 404);
   const detail = await fetch(`${base}/${id}`).then((res) => res.json());
   assert.equal(detail.task.status, 'In Progress');
+});
+
+test('assignee endpoint validates users and preserves other task fields', async () => {
+  const created = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid) }).then((res) => res.json());
+  const id = created.task.assignment_id;
+  const patch = (target, userId) => fetch(`${base}/${target}/assignee`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId }),
+  });
+  for (const invalid of [null, '1', 0, -1, 1.5, 2147483648, 99]) assert.equal((await patch(id, invalid)).status, 400);
+  assert.equal((await patch('invalid', 1)).status, 400);
+  assert.equal((await patch(2147483647, 1)).status, 404);
+  const response = await patch(id, 1);
+  assert.equal(response.status, 200);
+  const { task } = await response.json();
+  assert.equal(task.employee_id, 1);
+  assert.equal(task.shift_type_id, null);
+  assert.equal(task.status, created.task.status);
+  assert.equal(task.priority, created.task.priority);
 });

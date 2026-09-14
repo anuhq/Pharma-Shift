@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { createTaskSection, getTaskOptions } from '../../services/taskApi';
+import {
+  createTaskSection,
+  getHandoverOptions,
+  getTaskOptions,
+} from '../../services/taskApi';
 import { taskSections } from './taskSections';
 
 export default function TaskSectionModal({ section, onClose, onSaved }) {
@@ -28,11 +32,22 @@ export default function TaskSectionModal({ section, onClose, onSaved }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    getTaskOptions(controller.signal).then(setOptions).catch((err) => {
-      if (err.name !== 'AbortError') setLoadError(err.message);
-    });
+
+    const loadOptions =
+      section === 'handovers'
+        ? getHandoverOptions
+        : getTaskOptions;
+
+    loadOptions(controller.signal)
+      .then(setOptions)
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          setLoadError(err.message);
+        }
+      });
+
     return () => controller.abort();
-  }, [attempt]);
+  }, [attempt, section]);
 
   async function submit(event) {
     event.preventDefault();
@@ -94,7 +109,7 @@ export default function TaskSectionModal({ section, onClose, onSaved }) {
                       {field.choices ? field.choices.map((choice) => <option key={choice}>{choice}</option>) : options[field.source].map((item) => <option key={item[field.id]} value={item[field.id]}>{item[field.display]}</option>)}
                     </select> : field.type === 'textarea' ? <textarea {...props} className="form-control" rows={4} maxLength={field.maxLength} /> :
                       <input {...props} className="form-control" type={field.type || 'text'} maxLength={field.maxLength} placeholder={field.placeholder}
-                        min={field.type === 'date' ? '1000-01-01' : undefined} max={field.type === 'date' ? '9999-12-31' : undefined} />}
+                        min={field.type === 'date' ? '2020-01-01' : undefined}max={field.type === 'date' ? '2100-12-31' : undefined} />}
                     {field.source && !options[field.source].length && <div className="form-text">No active {field.source} available.{field.source === 'checklists' ? ' You can create a checklist in the Checklists tab.' : ''}</div>}
                   </div>;
                 })}

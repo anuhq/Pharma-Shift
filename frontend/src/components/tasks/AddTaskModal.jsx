@@ -10,7 +10,7 @@ function AddTaskModal({ onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [values, setValues] = useState({
-    template_id: '', title: '', description: '', assigneeType: 'employee',
+    template_id: '', title: '', description: '',
     assigneeId: '', assigned_date: '', due_time: '', priority: 'Medium',
   });
 
@@ -39,7 +39,6 @@ function AddTaskModal({ onClose, onSaved }) {
     const { name, value } = event.target;
     setValues((current) => {
       const next = { ...current, [name]: value };
-      if (name === 'assigneeType') next.assigneeId = '';
       if (name === 'template_id' && value) {
         next.priority = options.templates.find((template) => template.template_id === Number(value)).priority;
       }
@@ -61,8 +60,8 @@ function AddTaskModal({ onClose, onSaved }) {
       const { task } = await createTask({
         template_id: values.template_id ? Number(values.template_id) : null,
         title: values.title.trim(), description: values.description.trim(),
-        employee_id: values.assigneeType === 'employee' ? Number(values.assigneeId) : null,
-        shift_type_id: values.assigneeType === 'shift' ? Number(values.assigneeId) : null,
+        employee_id: Number(values.assigneeId),
+        shift_type_id: null,
         assigned_date: values.assigned_date, due_time: values.due_time || null,
         priority: values.priority,
       });
@@ -75,7 +74,7 @@ function AddTaskModal({ onClose, onSaved }) {
     }
   }
 
-  const assignees = options ? (values.assigneeType === 'employee' ? options.employees : options.shifts) : [];
+  const assignees = options?.users || [];
 
   return (
     <dialog ref={dialogRef} className="task-modal border-0 rounded shadow p-0"
@@ -86,7 +85,7 @@ function AddTaskModal({ onClose, onSaved }) {
           <h4 id="add-task-modal-title" className="modal-title h5">Add Task</h4>
           <button type="button" className="btn-close" aria-label="Close" disabled={saving} onClick={onClose} />
         </div>
-        {!options && !loadError && <p className="p-3 mb-0" role="status">Loading employees, shifts and templates...</p>}
+        {!options && !loadError && <p className="p-3 mb-0" role="status">Loading users and templates...</p>}
         {loadError && <div className="alert alert-danger m-3" role="alert">
           {loadError}
           <button type="button" className="btn btn-outline-danger btn-sm ms-2" onClick={() => { setLoadError(''); setAttempt((value) => value + 1); }}>Retry</button>
@@ -116,23 +115,17 @@ function AddTaskModal({ onClose, onSaved }) {
                   </div>
                 </>}
                 {values.template_id && <p className="mb-0 small">{options.templates.find((template) => template.template_id === Number(values.template_id))?.description}</p>}
-                <div className="col-md-6">
-                  <label htmlFor="task-assignee-type" className="form-label">Assign to</label>
-                  <select id="task-assignee-type" name="assigneeType" className="form-select" value={values.assigneeType} onChange={change}>
-                    <option value="employee">Employee</option><option value="shift">Shift</option>
-                  </select>
-                </div>
-                <div className="col-md-6">
-                  <label htmlFor="task-assignee" className="form-label">{values.assigneeType === 'employee' ? 'Employee' : 'Shift'}</label>
+                <div className="col-12">
+                  <label htmlFor="task-assignee" className="form-label">Assigned to</label>
                   <select id="task-assignee" name="assigneeId" className="form-select" required value={values.assigneeId} onChange={change}>
-                    <option value="">Select {values.assigneeType}</option>
-                    {assignees.map((item) => <option key={item.employee_id ?? item.shift_type_id} value={item.employee_id ?? item.shift_type_id}>{item.full_name ?? item.shift_name}</option>)}
+                    <option value="">Select a user</option>
+                    {assignees.map((user) => <option key={user.user_id} value={user.employee_id}>{user.full_name} ({user.username})</option>)}
                   </select>
-                  {!assignees.length && <div className="form-text">No active {values.assigneeType === 'employee' ? 'employees' : 'shifts'} are available. Add them to the database first.</div>}
+                  {!assignees.length && <div className="form-text">No active registered users are available.</div>}
                 </div>
                 <div className="col-md-6">
                   <label htmlFor="task-date" className="form-label">Date</label>
-                  <input id="task-date" name="assigned_date" type="date" min="1000-01-01" max="9999-12-31" className="form-control" required value={values.assigned_date} onChange={change} />
+                  <input id="task-date" name="assigned_date" type="date" min="2020-01-01"max="2100-12-31" className="form-control" required value={values.assigned_date} onChange={change} />
                 </div>
                 <div className="col-md-6">
                   <label htmlFor="task-due-time" className="form-label">Due time (optional)</label>

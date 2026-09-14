@@ -35,11 +35,13 @@ Example POST body (replace employee ID with an existing active employee):
 }
 ```
 
-Provide either an employee ID or a shift ID, not both. To reuse a template, send `template_id` instead of `title` and `description`. Due time is optional. Priority is `Low`, `Medium` or `High`. Validation errors return HTTP 400; unexpected failures return a generic HTTP 500 message.
+Provide the employee ID linked to an active registered user. Shift assignments are no longer accepted for new tasks. To reuse a template, send `template_id` instead of `title` and `description`. Due time is optional. Priority is `Low`, `Medium` or `High`. Validation errors return HTTP 400; unexpected failures return a generic HTTP 500 message.
 
 All four tabs support creation and reading. Assignments also support progress updates. General record editing and deletion are not included.
 
 ## Staff progress updates
+
+The Assigned To column loads active registered users from `/api/tasks/options` (`users`: user ID, linked employee ID, name and username). Selecting a user calls `PATCH /api/tasks/:id/assignee` with `{ "user_id": 1 }`. The backend validates the active account and employee, stores its employee ID, and clears any previous shift assignment. Status, notes and other task details are preserved. Existing assignments remain unchanged until a selection is saved.
 
 In Task Assignments, click **Update Progress**, choose `Assigned`, `In Progress` or `Completed`, and optionally enter a progress/completion note (up to 255 characters). Save Progress updates MySQL and the row in the table. Refreshing the page retains the saved status and note. Cancel leaves the record unchanged.
 
@@ -54,7 +56,7 @@ The module uses the application's existing shared interface. Staff login, per-us
 | 1 | Local frontend/backend setup and MySQL connection |
 | 2 | Interfaces and popup forms for all four sections |
 | 3 | Templates/checklists save to and load from MySQL; templates can link to checklists |
-| 4 | Employee/shift assignments plus saved status and progress/completion notes |
+| 4 | Registered-user assignments plus saved status and progress/completion notes |
 | 5 | Basic handover creation and reading with employee, next shift, date, notes and priority |
 
 ## Templates, checklists and handovers
@@ -76,3 +78,5 @@ Create a checklist first, then select it when creating a template to group that 
 Run `npm test` in `backend` for validation and API tests using an isolated in-memory model stub. Run `npm run lint` and `npm run build` in `frontend`.
 
 For an optional real MySQL section API check in PowerShell, run `$env:TASK_DB_TEST='1'; node --test test/taskSections.test.js; Remove-Item Env:TASK_DB_TEST` from `backend`. This requires the configured database with an active employee and shift. It creates temporary records and removes only those records afterward.
+
+Task assignment dropdowns and the Add Task form show registered users only. Older shift assignments show Select a user until explicitly reassigned; existing database records are not automatically reassigned.
