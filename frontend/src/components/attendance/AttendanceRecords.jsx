@@ -157,10 +157,6 @@ function AttendanceRecords() {
 
   return (
     <div className="mt-4">
-      <p className="small text-secondary">
-        Attendance records are loaded from the PharmaShift database.
-        Staff see their own records, while managers can review all records.
-      </p>
 
       <div className="d-flex flex-wrap gap-2 mb-4">
         <button

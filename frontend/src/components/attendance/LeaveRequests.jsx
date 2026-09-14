@@ -115,10 +115,7 @@ function LeaveRequests() {
 
   return (
     <div className="mt-4">
-      <p className="small text-secondary">
-        Fictional data only. Staff and manager controls are shown together for
-        interface testing. Refreshing the page resets all preview changes.
-      </p>
+
       <button type="button" className="btn btn-primary mb-4" ref={submitButtonRef}
         disabled={formOpen} onClick={() => {
           setMessage(''); setSelectedId(null); setFormOpen(true);
@@ -155,14 +152,14 @@ function LeaveRequests() {
         <div className="col-12 col-md-6 col-xl-4">
           <label htmlFor="leave-filter-from" className="form-label">Date range: from</label>
           <input id="leave-filter-from" name="from" type="date" className="form-control"
-            value={filters.from} onChange={updateFilter} aria-describedby="leave-range-help" />
+            value={filters.from} onChange={updateFilter}/>
         </div>
         <div className="col-12 col-md-6 col-xl-4">
           <label htmlFor="leave-filter-to" className="form-label">Date range: to</label>
           <input id="leave-filter-to" name="to" type="date"
             className={`form-control${invalidRange ? ' is-invalid' : ''}`}
             value={filters.to} onChange={updateFilter} aria-invalid={Boolean(invalidRange)}
-            aria-describedby={invalidRange ? 'leave-range-error' : 'leave-range-help'} />
+            aria-describedby={invalidRange ? 'leave-range-error' : undefined} />
         </div>
         <div className="col-12 col-md-6 col-xl-4">
           <button type="button" className="btn btn-outline-secondary w-100" onClick={() => {
@@ -170,7 +167,6 @@ function LeaveRequests() {
           }}>Reset filters</button>
         </div>
       </div>
-      <p id="leave-range-help" className="small">Filters apply as you type. The date range includes leave that overlaps those dates.</p>
       {invalidRange && <div id="leave-range-error" className="alert alert-danger" role="alert">The end of the date range cannot be before its start.</div>}
 
       <div className="row g-4">

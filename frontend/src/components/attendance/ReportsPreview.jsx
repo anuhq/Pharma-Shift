@@ -32,9 +32,6 @@ function ReportsPreview() {
 
   return (
     <div className="mt-4">
-      <p className="small text-secondary">
-        Report layout preview. The values below are fictional and are not generated from the database.
-      </p>
 
       <div className="alert alert-secondary" role="status">
         No report generation currently.

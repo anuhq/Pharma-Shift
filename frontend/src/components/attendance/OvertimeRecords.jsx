@@ -100,7 +100,6 @@ function OvertimeRecords() {
 
   return (
     <div className="mt-4">
-      <p className="small text-secondary">Manager preview with fictional employees. Refreshing the page resets all preview changes.</p>
       <button type="button" className="btn btn-primary mb-4" ref={addButtonRef}
         disabled={activeForm !== null} onClick={(event) => openForm(null, event.currentTarget)}>Add overtime</button>
       {message && <div className="alert alert-info" role="status">{message}</div>}
