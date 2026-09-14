@@ -1,6 +1,7 @@
+import { API_BASE_URL } from '../api/config';
 import { useCallback, useEffect, useState } from 'react';
 
-const API_URL = 'http://127.0.0.1:5000/api/corrective-actions';
+const API_URL = API_BASE_URL + "/api/corrective-actions";
 
 const STATUSES = [
   'Pending',

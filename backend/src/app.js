@@ -3,6 +3,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 
 const healthRoutes = require('./routes/healthRoutes');
+const taskRoutes = require('./routes/taskRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const roleRoutes = require('./routes/roleRoutes');
 const shiftTypeRoutes = require('./routes/shiftTypeRoutes');
@@ -44,6 +45,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/health', healthRoutes);
+app.use('/api/tasks', requireAuth, taskRoutes);
 
 app.use(
   '/api/employees',
@@ -79,6 +81,10 @@ app.use((error, req, res, next) => {
   if (res.headersSent) {
     return next(error);
   }
+
+  if (error.type === 'entity.parse.failed') return res.status(400).json({ message: 'Request body must be valid JSON.' });
+  if (error.type === 'entity.too.large') return res.status(413).json({ message: 'Request body is too large.' });
+  if (error.status === 400) return res.status(400).json({ message: error.message });
 
   console.error(
     'Request failed:',
