@@ -155,10 +155,22 @@ router.get('/', async (req, res) => {
             i.category_id, c.category_name, c.severity_level,
             DATE_FORMAT(i.incident_date, '%Y-%m-%d') AS incident_date,
             i.description, i.status,
+            DATE_FORMAT(i.follow_up_date, '%Y-%m-%d') AS follow_up_date,
+            i.follow_up_notes,
+            DATE_FORMAT(i.closure_date, '%Y-%m-%d') AS closure_date,
             (SELECT COUNT(*) FROM investigation inv
              WHERE inv.incident_id = i.incident_id) AS investigation_count,
+            (SELECT COUNT(*) FROM investigation inv
+             WHERE inv.incident_id = i.incident_id
+               AND TRIM(COALESCE(inv.outcome, '')) <> '')
+              AS investigation_with_outcome_count,
             (SELECT COUNT(*) FROM corrective_action ca
-             WHERE ca.incident_id = i.incident_id) AS corrective_action_count
+             WHERE ca.incident_id = i.incident_id) AS corrective_action_count,
+            (SELECT COUNT(*) FROM corrective_action ca
+             WHERE ca.incident_id = i.incident_id
+               AND (ca.status <> 'Completed' OR ca.completed_date IS NULL
+                 OR TRIM(COALESCE(ca.follow_up_details, '')) = ''))
+              AS unready_action_count
      FROM staff_incident i
      JOIN employee e ON e.employee_id = i.employee_id
      JOIN incident_category c ON c.category_id = i.category_id
@@ -268,6 +280,192 @@ router.put('/:id', async (req, res) => {
   }
 
   res.json({ message: 'Incident updated successfully.' });
+});
+
+// Incident-level follow-up is recorded by a manager after investigation.
+// The date and notes stay editable until the incident is closed.
+function isValidWorkflowDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) &&
+    Number(value.slice(0, 4)) >= 1000 &&
+    date.toISOString().slice(0, 10) === value;
+}
+
+function workflowError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+async function runIncidentTransaction(res, next, task) {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const result = await task(connection);
+    await connection.commit();
+    return res.status(result.status || 200).json(result.body);
+  } catch (error) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        return next(rollbackError);
+      }
+    }
+    if ([400, 404, 409].includes(error.status)) {
+      return res.status(error.status).json({ message: error.message });
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
+}
+
+router.put('/:id/follow-up', async (req, res, next) => {
+  const incidentId = Number(req.params.id);
+  const followUpDate = req.body?.follow_up_date;
+  const followUpNotes = req.body?.follow_up_notes;
+
+  if (!Number.isSafeInteger(incidentId) || incidentId < 1) {
+    return res.status(400).json({ message: 'Invalid incident ID.' });
+  }
+  if (!isValidWorkflowDate(followUpDate)) {
+    return res.status(400).json({ message: 'Enter a valid follow-up date.' });
+  }
+  if (typeof followUpNotes !== 'string' || !followUpNotes.trim() ||
+      followUpNotes.trim().length > 500) {
+    return res.status(400).json({
+      message: 'Enter follow-up notes between 1 and 500 characters.',
+    });
+  }
+
+  return runIncidentTransaction(res, next, async (connection) => {
+    // Lock the parent incident so follow-up cannot race with closure.
+    const [incidents] = await connection.execute(
+      `SELECT status, DATE_FORMAT(incident_date, '%Y-%m-%d') AS incident_date
+       FROM staff_incident WHERE incident_id = ? FOR UPDATE`,
+      [incidentId],
+    );
+    if (!incidents.length) throw workflowError(404, 'Incident not found.');
+    if (incidents[0].status === 'Closed') {
+      throw workflowError(409, 'Closed incidents cannot be changed.');
+    }
+
+    const [investigations] = await connection.execute(
+      `SELECT DATE_FORMAT(investigation_date, '%Y-%m-%d') AS investigation_date
+       FROM investigation WHERE incident_id = ? FOR UPDATE`,
+      [incidentId],
+    );
+    if (!investigations.length) {
+      throw workflowError(409, 'Record an investigation before incident follow-up.');
+    }
+
+    const [[clock]] = await connection.execute(
+      `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS today`,
+    );
+    if (followUpDate > clock.today) {
+      throw workflowError(400, 'Follow-up date cannot be in the future.');
+    }
+    if (followUpDate < incidents[0].incident_date ||
+        followUpDate < investigations[0].investigation_date) {
+      throw workflowError(400,
+        'Follow-up date cannot be before the incident or investigation date.');
+    }
+
+    await connection.execute(
+      `UPDATE staff_incident
+       SET follow_up_date = ?, follow_up_notes = ?
+       WHERE incident_id = ?`,
+      [followUpDate, followUpNotes.trim(), incidentId],
+    );
+    return { body: { message: 'Incident follow-up saved successfully.' } };
+  });
+});
+
+// Closure is a separate, atomic manager decision. The client cannot choose
+// the final status or closure date. Every required check runs under row locks.
+router.post('/:id/close', async (req, res, next) => {
+  const incidentId = Number(req.params.id);
+  if (!Number.isSafeInteger(incidentId) || incidentId < 1) {
+    return res.status(400).json({ message: 'Invalid incident ID.' });
+  }
+
+  return runIncidentTransaction(res, next, async (connection) => {
+    const [incidents] = await connection.execute(
+      `SELECT status,
+              DATE_FORMAT(incident_date, '%Y-%m-%d') AS incident_date,
+              DATE_FORMAT(follow_up_date, '%Y-%m-%d') AS follow_up_date,
+              follow_up_notes
+       FROM staff_incident WHERE incident_id = ? FOR UPDATE`,
+      [incidentId],
+    );
+    if (!incidents.length) throw workflowError(404, 'Incident not found.');
+    const incident = incidents[0];
+    if (incident.status === 'Closed') {
+      throw workflowError(409, 'This incident is already closed.');
+    }
+
+    const [investigations] = await connection.execute(
+      `SELECT DATE_FORMAT(investigation_date, '%Y-%m-%d') AS investigation_date,
+              outcome
+       FROM investigation WHERE incident_id = ? FOR UPDATE`,
+      [incidentId],
+    );
+    if (!investigations.length || !String(investigations[0].outcome || '').trim()) {
+      throw workflowError(409,
+        'Record an investigation with an outcome before closing the incident.');
+    }
+    if (!incident.follow_up_date || !String(incident.follow_up_notes || '').trim()) {
+      throw workflowError(409,
+        'Save the incident follow-up date and notes before closure.');
+    }
+
+    const [actions] = await connection.execute(
+      `SELECT action_id, status, follow_up_details,
+              DATE_FORMAT(completed_date, '%Y-%m-%d') AS completed_date
+       FROM corrective_action WHERE incident_id = ? FOR UPDATE`,
+      [incidentId],
+    );
+    const unfinished = actions.find((action) =>
+      action.status !== 'Completed' || !action.completed_date ||
+      !String(action.follow_up_details || '').trim());
+    if (unfinished) {
+      throw workflowError(409,
+        `Corrective action #${unfinished.action_id} requires manager-verified completion, a completed date and follow-up details.`);
+    }
+
+    const [[clock]] = await connection.execute(
+      `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS today`,
+    );
+    if (incident.follow_up_date > clock.today ||
+        incident.follow_up_date < incident.incident_date ||
+        incident.follow_up_date < investigations[0].investigation_date) {
+      throw workflowError(409, 'Check the incident follow-up date before closure.');
+    }
+    if (actions.some((action) =>
+      action.completed_date > incident.follow_up_date ||
+      action.completed_date > clock.today)) {
+      throw workflowError(409,
+        'Follow-up must be dated on or after all corrective actions were completed.');
+    }
+
+    await connection.execute(
+      `UPDATE staff_incident
+       SET status = 'Closed', closure_date = CURDATE()
+       WHERE incident_id = ?`,
+      [incidentId],
+    );
+    return {
+      body: {
+        message: 'Incident closed successfully. The record is now read-only.',
+        closure_date: clock.today,
+      },
+    };
+  });
 });
 
 // Delete only a new, unlinked incident. Never erase investigation or action history.

@@ -2,6 +2,7 @@ import { API_BASE_URL } from '../api/config';
 import { useCallback, useEffect, useState } from 'react';
 import Investigations from './Investigations';
 import CorrectiveActions from './CorrectiveActions';
+import IncidentFollowUp from './IncidentFollowUp';
 import StaffIncidentReport from './StaffIncidentReport';
 import { useAuth } from '../auth/useAuth';
 
@@ -840,6 +841,8 @@ function ManagerIncidentManagement() {
         employees={employees}
         onSaved={loadData}
       />
+
+      <IncidentFollowUp incidents={incidents} onSaved={loadData} />
     </div>
   );
 }
