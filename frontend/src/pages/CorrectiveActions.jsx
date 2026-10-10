@@ -418,6 +418,7 @@ function CorrectiveActions({ incidents, employees, onSaved }) {
                         <th>Due date</th>
                         <th>Status</th>
                         <th>Follow-up</th>
+                        <th>Staff completion feedback</th>
                         <th>Edit</th>
                       </tr>
                     </thead>
@@ -452,6 +453,15 @@ function CorrectiveActions({ incidents, employees, onSaved }) {
                             {action.completed_date && (
                               <div className="small text-muted">
                                 Completed: {action.completed_date}
+                              </div>
+                            )}
+                          </td>
+
+                          <td style={{ whiteSpace: 'pre-wrap' }}>
+                            {action.staff_completion_feedback || 'No feedback yet'}
+                            {action.staff_feedback_submitted_at && (
+                              <div className="small text-muted mt-1">
+                                Submitted (UTC): {action.staff_feedback_submitted_at}
                               </div>
                             )}
                           </td>

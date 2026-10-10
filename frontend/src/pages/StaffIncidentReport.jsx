@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../api/config';
 import { useAuth } from '../auth/useAuth';
+import StaffCorrectiveActionList from './StaffCorrectiveActionList';
 
 const emptyReport = { category_id: '', incident_date: '', description: '' };
 
@@ -144,6 +145,7 @@ function StaffIncidentReport() {
           )}
         </div>
       </div>
+      <StaffCorrectiveActionList />
     </div>
   );
 }
