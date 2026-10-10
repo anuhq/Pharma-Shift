@@ -7,7 +7,64 @@ const {
 
 const router = express.Router();
 
-router.use(requireAuth, requireRole('Owner/Manager'));
+// Authentication is required for every incident route.
+// Staff can only use the two explicitly allowed reporting endpoints below.
+router.use(requireAuth);
+
+const staffPermission = requireRole('Pharmacist', 'Pharmacy Assistant');
+
+// Staff receive category names only, not manager incident records or category notes.
+router.get('/report-categories', staffPermission, async (req, res) => {
+  const [categories] = await pool.execute(
+    `SELECT category_id, category_name
+     FROM incident_category
+     ORDER BY category_name, category_id`
+  );
+
+  return res.json({ categories });
+});
+
+// Staff reports are associated with their own authenticated employee ID.
+// Never trust employee_id or status supplied by the browser.
+router.post('/report', staffPermission, async (req, res) => {
+  const incident = {
+    employee_id: req.currentUser.employee_id,
+    category_id: req.body?.category_id,
+    incident_date: req.body?.incident_date,
+    description: req.body?.description,
+  };
+
+  const validationError = validateIncident(incident);
+  if (validationError) {
+    return res.status(400).json({ message: validationError });
+  }
+
+  const referenceError = await validateReferences(incident);
+  if (referenceError) {
+    return res.status(400).json({ message: referenceError });
+  }
+
+  const [result] = await pool.execute(
+    `INSERT INTO staff_incident
+       (employee_id, category_id, incident_date, description, status)
+     VALUES (?, ?, ?, ?, 'Open')`,
+    [
+      Number(req.currentUser.employee_id),
+      Number(incident.category_id),
+      incident.incident_date,
+      incident.description.trim(),
+    ]
+  );
+
+  return res.status(201).json({
+    message: 'Incident report submitted successfully.',
+    incident_id: result.insertId,
+  });
+});
+
+// All remaining incident operations are manager-only, including employee
+// selection, incident lists, editing, and deletion.
+router.use(requireRole('Owner/Manager'));
 
 function validateIncident(body) {
   const employeeId = Number(body?.employee_id);

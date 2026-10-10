@@ -2,6 +2,8 @@ import { API_BASE_URL } from '../api/config';
 import { useCallback, useEffect, useState } from 'react';
 import Investigations from './Investigations';
 import CorrectiveActions from './CorrectiveActions';
+import StaffIncidentReport from './StaffIncidentReport';
+import { useAuth } from '../auth/useAuth';
 
 
 
@@ -33,7 +35,7 @@ async function requestJson(url, options = {}) {
   return data;
 }
 
-function IncidentCorrectiveAction() {
+function ManagerIncidentManagement() {
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [incidents, setIncidents] = useState([]);
@@ -838,6 +840,27 @@ function IncidentCorrectiveAction() {
         employees={employees}
         onSaved={loadData}
       />
+    </div>
+  );
+}
+
+// Staff never mount the manager component or its privileged API requests.
+function IncidentCorrectiveAction() {
+  const { user } = useAuth();
+
+  if (user?.roleName === 'Owner/Manager') {
+    return <ManagerIncidentManagement />;
+  }
+
+  if (['Pharmacist', 'Pharmacy Assistant'].includes(user?.roleName)) {
+    return <StaffIncidentReport />;
+  }
+
+  return (
+    <div className="container-fluid py-4">
+      <div className="alert alert-warning" role="alert">
+        You do not have permission to access incident management.
+      </div>
     </div>
   );
 }
