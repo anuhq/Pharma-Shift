@@ -43,6 +43,8 @@ function IncidentCorrectiveAction() {
 
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [editingIncidentId, setEditingIncidentId] = useState(null);
+  const [categorySearch, setCategorySearch] = useState('');
+  const [deletingCategoryId, setDeletingCategoryId] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [savingCategory, setSavingCategory] = useState(false);
@@ -169,6 +171,50 @@ function IncidentCorrectiveAction() {
       setSavingCategory(false);
     }
   }
+
+  async function deleteCategory(category) {
+    if (
+      !window.confirm(
+        `Delete category "${category.category_name}"? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setDeletingCategoryId(category.category_id);
+    setError('');
+    setMessage('');
+
+    try {
+      await requestJson(
+        `${API_BASE_URL}/api/incident-categories/${category.category_id}`,
+        { method: 'DELETE' },
+      );
+
+      if (editingCategoryId === category.category_id) {
+        resetCategoryForm();
+      }
+
+      setIncidentForm((current) =>
+        current.category_id === String(category.category_id)
+          ? { ...current, category_id: '' }
+          : current,
+      );
+
+      await loadData();
+      setMessage('Category deleted successfully.');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setDeletingCategoryId(null);
+    }
+  }
+
+  const searchText = categorySearch.trim().toLowerCase();
+  const visibleCategories = categories.filter((category) =>
+    [category.category_name, category.severity_level, category.description || '']
+      .some((value) => value.toLowerCase().includes(searchText)),
+  );
 
   async function submitIncident(event) {
     event.preventDefault();
@@ -327,6 +373,18 @@ function IncidentCorrectiveAction() {
             <div className="card-body">
               <h4 className="mb-3">Incident Categories</h4>
 
+              <label className="form-label" htmlFor="category_search">
+                Search categories
+              </label>
+              <input
+                id="category_search"
+                type="search"
+                className="form-control mb-3"
+                placeholder="Search name, severity or description"
+                value={categorySearch}
+                onChange={(event) => setCategorySearch(event.target.value)}
+              />
+
               {loading ? (
                 <p className="text-muted">Loading...</p>
               ) : (
@@ -337,24 +395,45 @@ function IncidentCorrectiveAction() {
                         <th>Name</th>
                         <th>Severity</th>
                         <th>Description</th>
-                        <th>Action</th>
+                        <th>Linked incidents</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {categories.map((category) => (
+                      {visibleCategories.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="text-muted text-center">
+                            No matching categories found.
+                          </td>
+                        </tr>
+                      )}
+                      {visibleCategories.map((category) => (
                         <tr key={category.category_id}>
                           <td>{category.category_name}</td>
                           <td>{category.severity_level}</td>
                           <td>{category.description || '-'}</td>
+                          <td>{category.incident_count || 0}</td>
                           <td>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-secondary"
-                              onClick={() => editCategory(category)}
-                            >
-                              Edit
-                            </button>
+                            <div className="d-flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={() => editCategory(category)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => void deleteCategory(category)}
+                                disabled={deletingCategoryId !== null}
+                              >
+                                {deletingCategoryId === category.category_id
+                                  ? 'Deleting...'
+                                  : 'Delete'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
