@@ -97,7 +97,11 @@ router.get('/', async (req, res) => {
     `SELECT i.incident_id, i.employee_id, e.full_name,
             i.category_id, c.category_name, c.severity_level,
             DATE_FORMAT(i.incident_date, '%Y-%m-%d') AS incident_date,
-            i.description, i.status
+            i.description, i.status,
+            (SELECT COUNT(*) FROM investigation inv
+             WHERE inv.incident_id = i.incident_id) AS investigation_count,
+            (SELECT COUNT(*) FROM corrective_action ca
+             WHERE ca.incident_id = i.incident_id) AS corrective_action_count
      FROM staff_incident i
      JOIN employee e ON e.employee_id = i.employee_id
      JOIN incident_category c ON c.category_id = i.category_id
@@ -207,6 +211,82 @@ router.put('/:id', async (req, res) => {
   }
 
   res.json({ message: 'Incident updated successfully.' });
+});
+
+// Delete only a new, unlinked incident. Never erase investigation or action history.
+router.delete('/:id', async (req, res, next) => {
+  const incidentId = Number(req.params.id);
+
+  if (!Number.isSafeInteger(incidentId) || incidentId < 1) {
+    return res.status(400).json({ message: 'Invalid incident ID.' });
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // Lock the parent row so concurrent linked records cannot bypass the check.
+    const [existing] = await connection.execute(
+      'SELECT status FROM staff_incident WHERE incident_id = ? FOR UPDATE',
+      [incidentId],
+    );
+
+    if (!existing.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Incident not found.' });
+    }
+
+    if (existing[0].status !== 'Open') {
+      await connection.rollback();
+      return res.status(409).json({
+        message: 'Only Open incidents without follow-up work can be deleted.',
+      });
+    }
+
+    const [linked] = await connection.execute(
+      `SELECT
+         (SELECT COUNT(*) FROM investigation WHERE incident_id = ?) AS investigations,
+         (SELECT COUNT(*) FROM corrective_action WHERE incident_id = ?) AS actions`,
+      [incidentId, incidentId],
+    );
+
+    if (linked[0].investigations > 0 || linked[0].actions > 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: 'This incident has an investigation or corrective action. Keep it for the audit history.',
+      });
+    }
+
+    const [result] = await connection.execute(
+      'DELETE FROM staff_incident WHERE incident_id = ?',
+      [incidentId],
+    );
+
+    if (result.affectedRows !== 1) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Incident not found.' });
+    }
+
+    await connection.commit();
+    return res.json({ message: 'Incident deleted successfully.' });
+  } catch (error) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error('Incident deletion rollback failed:', rollbackError.code || rollbackError.name);
+      }
+    }
+    if (error.code === 'ER_ROW_IS_REFERENCED_2' || error.code === 'ER_ROW_IS_REFERENCED') {
+      return res.status(409).json({
+        message: 'Related investigation or corrective-action records prevent deletion.',
+      });
+    }
+    return next(error);
+  } finally {
+    if (connection) connection.release();
+  }
 });
 
 module.exports = router;
