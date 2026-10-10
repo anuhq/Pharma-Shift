@@ -137,6 +137,104 @@ async function validateReferences(body, previousEmployeeId = null) {
     : 'The selected category does not exist.';
 }
 
+// Manager-only repeated-incident detection. It is a descriptive pattern check,
+// not a finding of fault: same employee + category, at least twice in the
+// selected inclusive incident-date range. Closed incidents remain included.
+// This is calculated from live MySQL records, never browser demo data.
+router.get('/repeated-warnings', async (req, res) => {
+  const fromDate = req.query.from_date;
+  const toDate = req.query.to_date;
+
+  if (!isValidWorkflowDate(fromDate) || !isValidWorkflowDate(toDate)) {
+    return res.status(400).json({ message: 'Choose valid From and To dates.' });
+  }
+  if (fromDate > toDate) {
+    return res.status(400).json({ message: 'From date cannot be after To date.' });
+  }
+
+  function optionalId(value) {
+    if (value === undefined || value === '') return null;
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : NaN;
+  }
+
+  const employeeId = optionalId(req.query.employee_id);
+  const categoryId = optionalId(req.query.category_id);
+  if (Number.isNaN(employeeId) || Number.isNaN(categoryId)) {
+    return res.status(400).json({ message: 'Choose valid employee and category filters.' });
+  }
+
+  // Only bind user-provided values as SQL parameters. Window counts are
+  // calculated *after* date filtering, so a warning always reflects exactly
+  // the selected period and optional employee/category filters.
+  const conditions = ['i.incident_date BETWEEN ? AND ?'];
+  const parameters = [fromDate, toDate];
+  if (employeeId !== null) {
+    conditions.push('i.employee_id = ?');
+    parameters.push(employeeId);
+  }
+  if (categoryId !== null) {
+    conditions.push('i.category_id = ?');
+    parameters.push(categoryId);
+  }
+
+  const [records] = await pool.execute(
+    `SELECT detected.incident_id, detected.employee_id, detected.full_name,
+            detected.category_id, detected.category_name, detected.incident_date,
+            detected.status, detected.description, detected.occurrence_count
+     FROM (
+       SELECT i.incident_id, i.employee_id, e.full_name,
+              i.category_id, c.category_name,
+              DATE_FORMAT(i.incident_date, '%Y-%m-%d') AS incident_date,
+              i.status, i.description,
+              COUNT(*) OVER (PARTITION BY i.employee_id, i.category_id)
+                AS occurrence_count
+       FROM staff_incident i
+       JOIN employee e ON e.employee_id = i.employee_id
+       JOIN incident_category c ON c.category_id = i.category_id
+       WHERE ${conditions.join(' AND ')}
+     ) AS detected
+     WHERE detected.occurrence_count >= 2
+     ORDER BY detected.occurrence_count DESC, detected.full_name,
+              detected.category_name, detected.incident_date DESC,
+              detected.incident_id DESC`,
+    parameters,
+  );
+
+  const groups = [];
+  const byPair = new Map();
+  for (const record of records) {
+    const pair = `${record.employee_id}:${record.category_id}`;
+    let group = byPair.get(pair);
+    if (!group) {
+      group = {
+        employee_id: record.employee_id,
+        full_name: record.full_name,
+        category_id: record.category_id,
+        category_name: record.category_name,
+        count: Number(record.occurrence_count),
+        incidents: [],
+      };
+      byPair.set(pair, group);
+      groups.push(group);
+    }
+    group.incidents.push({
+      incident_id: record.incident_id,
+      incident_date: record.incident_date,
+      status: record.status,
+      description: record.description,
+    });
+  }
+
+  return res.json({
+    from_date: fromDate,
+    to_date: toDate,
+    rule: 'Same employee and incident category, at least 2 recorded incidents in the selected inclusive date range.',
+    groups,
+    group_count: groups.length,
+  });
+});
+
 // Employee options for the incident form.
 router.get('/employees', async (req, res) => {
   const [employees] = await pool.execute(

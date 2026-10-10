@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Investigations from './Investigations';
 import CorrectiveActions from './CorrectiveActions';
 import IncidentFollowUp from './IncidentFollowUp';
+import RepeatedIncidentWarnings from './RepeatedIncidentWarnings';
 import StaffIncidentReport from './StaffIncidentReport';
 import { useAuth } from '../auth/useAuth';
 
@@ -352,6 +353,8 @@ function ManagerIncidentManagement() {
           {message}
         </div>
       )}
+
+      <RepeatedIncidentWarnings employees={employees} categories={categories} />
 
       <div className="row g-4">
         <div className="col-12 col-lg-5">
