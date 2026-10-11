@@ -235,4 +235,144 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Safely delete an inactive employee without linked records
+router.delete('/:id', async (req, res) => {
+  const employeeId = parseId(req.params.id);
+
+  if (employeeId === null) {
+    return res.status(400).json({
+      message: 'Employee ID must be a valid positive integer.',
+    });
+  }
+
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // Lock employee record while checking deletion eligibility
+    const [employees] = await connection.query(
+      `SELECT employee_id, status
+       FROM employee
+       WHERE employee_id = ?
+       FOR UPDATE`,
+      [employeeId]
+    );
+
+    if (employees.length === 0) {
+      await connection.rollback();
+
+      return res.status(404).json({
+        message: 'Employee not found.',
+      });
+    }
+
+    // Active employees must be deactivated first
+    if (employees[0].status !== 'Inactive') {
+      await connection.rollback();
+
+      return res.status(409).json({
+        message: 'Deactivate the employee before deleting.',
+      });
+    }
+
+    // Check all tables referencing employee records
+    const [references] = await connection.query(
+      `
+      SELECT
+        (SELECT COUNT(*) FROM \`user\`
+         WHERE employee_id = ?) AS login_accounts,
+
+        (SELECT COUNT(*) FROM shift_roster
+         WHERE employee_id = ?) AS rosters,
+
+        (SELECT COUNT(*) FROM attendance
+         WHERE employee_id = ?) AS attendance_records,
+
+        (SELECT COUNT(*) FROM leave_request
+         WHERE employee_id = ?) AS leave_requests,
+
+        (SELECT COUNT(*) FROM task_assignment
+         WHERE employee_id = ?) AS tasks,
+
+        (SELECT COUNT(*) FROM overtime
+         WHERE employee_id = ?) AS overtime_records,
+
+        (SELECT COUNT(*) FROM shift_handover
+         WHERE employee_id = ?) AS handovers,
+
+        (SELECT COUNT(*) FROM staff_incident
+         WHERE employee_id = ?) AS incidents,
+
+        (SELECT COUNT(*) FROM corrective_action
+         WHERE assigned_employee_id = ?) AS corrective_actions
+      `,
+      Array(9).fill(employeeId)
+    );
+
+    const hasLinkedRecords = Object.values(references[0])
+      .some((count) => Number(count) > 0);
+
+    if (hasLinkedRecords) {
+      await connection.rollback();
+
+      return res.status(409).json({
+        message:
+          'This employee has related records and cannot be permanently deleted. Keep the employee inactive to preserve history.',
+      });
+    }
+
+    // Delete only after all safety checks pass
+    const [result] = await connection.query(
+      'DELETE FROM employee WHERE employee_id = ?',
+      [employeeId]
+    );
+
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+
+      return res.status(404).json({
+        message: 'Employee not found.',
+      });
+    }
+
+    await connection.commit();
+
+    return res.status(200).json({
+      message: 'Employee deleted successfully.',
+    });
+
+  } catch (error) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error('Employee rollback error:', rollbackError.code);
+      }
+    }
+
+    // MySQL also protects foreign-key references
+    if (
+      error.code === 'ER_ROW_IS_REFERENCED_2' ||
+      error.code === 'ER_ROW_IS_REFERENCED'
+    ) {
+      return res.status(409).json({
+        message:
+          'This employee is being used by another record and cannot be deleted.',
+      });
+    }
+
+    console.error('Employee deletion error:', error.code);
+
+    return res.status(500).json({
+      message: 'Unable to delete the employee.',
+    });
+
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
 module.exports = router;

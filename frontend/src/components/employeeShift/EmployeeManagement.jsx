@@ -39,6 +39,7 @@ export default function EmployeeManagement() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [success, setSuccess] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const savingRef = useRef(false);
 
   // Load employees and roles when this section opens
@@ -87,6 +88,7 @@ export default function EmployeeManagement() {
     setForm({ ...emptyForm });
     setEditingId(null);
     setFormError('');
+    setDeleteError('');
     setSuccess('');
     setShowForm(true);
   }
@@ -101,9 +103,68 @@ export default function EmployeeManagement() {
     });
     setEditingId(employee.employee_id);
     setFormError('');
+    setDeleteError('');
     setSuccess('');
     setShowForm(true);
   }
+
+  // Safely delete an inactive employee
+async function handleDelete(employee) {
+  if (savingRef.current) return;
+
+  if (employee.status !== 'Inactive') {
+    setDeleteError('Deactivate the employee before deleting.');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Permanently delete "${employee.full_name}"? ` +
+    'This action cannot be undone. Employees with related records cannot be deleted.'
+  );
+
+  if (!confirmed) return;
+
+  savingRef.current = true;
+  setSaving(true);
+  setSuccess('');
+  setDeleteError('');
+
+  try {
+    const result = await apiRequest(
+      `/employees/${employee.employee_id}`,
+      {
+        method: 'DELETE',
+      }
+    );
+
+    // Remove employee from table after successful deletion
+    setEmployees((current) =>
+      current.filter(
+        (item) => item.employee_id !== employee.employee_id
+      )
+    );
+
+    // Close the edit form if this employee was being edited
+    if (editingId === employee.employee_id) {
+      setEditingId(null);
+      setShowForm(false);
+    }
+
+    setSuccess(
+      result.message || 'Employee deleted successfully.'
+    );
+
+  } catch (error) {
+    setDeleteError(
+      error instanceof TypeError
+        ? 'Connection lost. Refresh the employee list before retrying.'
+        : error.message
+    );
+  } finally {
+    savingRef.current = false;
+    setSaving(false);
+  }
+}
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -213,6 +274,12 @@ export default function EmployeeManagement() {
       {success && (
         <div className="alert alert-success" role="status">
           {success}
+        </div>
+      )}
+
+      {deleteError && (
+        <div className="alert alert-danger" role="alert">
+          {deleteError}
         </div>
       )}
 
@@ -416,7 +483,8 @@ export default function EmployeeManagement() {
                             {employee.status}
                           </span>
                         </td>
-                        <td>
+                       <td>
+                        <div className="d-flex flex-wrap gap-2">
                           <button
                             type="button"
                             className="btn btn-sm btn-outline-primary"
@@ -426,7 +494,18 @@ export default function EmployeeManagement() {
                           >
                             Edit
                           </button>
-                        </td>
+
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger"
+                            disabled={saving}
+                            aria-label={`Delete ${employee.full_name}`}
+                            onClick={() => handleDelete(employee)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
                       </tr>
                     ))}
 
