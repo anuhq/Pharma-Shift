@@ -71,6 +71,56 @@ export default function ShiftTypeManagement() {
     setShowForm(true);
   }
 
+    // Safely delete an inactive shift type
+      async function handleDelete(shiftType) {
+    if (saving) return;
+
+    setError('');
+    setSuccess('');
+
+    if (shiftType.status !== 'Inactive') {
+      setError('Deactivate the shift type before deleting.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Permanently delete "${shiftType.shift_name}"? ` +
+      'This action cannot be undone. Shift types with related records cannot be deleted.'
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+
+    try {
+      const result = await request(
+        `/shift-types/${shiftType.shift_type_id}`,
+        { method: 'DELETE' }
+      );
+
+      // Remove the deleted shift type from the displayed table
+      setShiftTypes((current) =>
+        current.filter(
+          (item) => item.shift_type_id !== shiftType.shift_type_id
+        )
+      );
+
+      // Close the edit form if this shift type was being edited
+      if (editingId === shiftType.shift_type_id) {
+        setEditingId(null);
+        setShowForm(false);
+      }
+
+      setSuccess(
+        result.message || 'Shift type deleted successfully.'
+      );
+    } catch (deleteError) {
+      setError(deleteError.message || 'Unable to delete shift type.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleChange(event) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
@@ -284,13 +334,26 @@ export default function ShiftTypeManagement() {
                         </span>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-primary"
-                          onClick={() => openEditForm(shiftType)}
-                        >
-                          Edit
-                        </button>
+                        <div className="d-flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => openEditForm(shiftType)}
+                            disabled={saving}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => handleDelete(shiftType)}
+                            disabled={saving}
+                            aria-label={`Delete ${shiftType.shift_name}`}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

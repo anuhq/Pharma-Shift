@@ -13,6 +13,8 @@ CREATE TABLE shift_type (
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     status VARCHAR(20) NOT NULL
+    CONSTRAINT uq_shift_type_name
+        UNIQUE (shift_name)
 );
 
 CREATE TABLE incident_category (
