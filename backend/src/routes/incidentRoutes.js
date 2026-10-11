@@ -66,6 +66,9 @@ router.post('/report', staffPermission, async (req, res) => {
 // selection, incident lists, editing, and deletion.
 router.use(requireRole('Owner/Manager'));
 
+// Manager-only database-backed incident and corrective-action reports.
+router.use('/reports', require('./incidentReportRoutes'));
+
 function validateIncident(body) {
   const employeeId = Number(body?.employee_id);
   const categoryId = Number(body?.category_id);

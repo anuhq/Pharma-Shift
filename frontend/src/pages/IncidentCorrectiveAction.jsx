@@ -4,6 +4,7 @@ import Investigations from './Investigations';
 import CorrectiveActions from './CorrectiveActions';
 import IncidentFollowUp from './IncidentFollowUp';
 import RepeatedIncidentWarnings from './RepeatedIncidentWarnings';
+import IncidentReports from './IncidentReports';
 import StaffIncidentReport from './StaffIncidentReport';
 import { useAuth } from '../auth/useAuth';
 
@@ -846,6 +847,8 @@ function ManagerIncidentManagement() {
       />
 
       <IncidentFollowUp incidents={incidents} onSaved={loadData} />
+
+      <IncidentReports employees={employees} categories={categories} />
     </div>
   );
 }
