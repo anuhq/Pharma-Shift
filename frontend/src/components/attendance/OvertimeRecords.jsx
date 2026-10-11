@@ -1,176 +1,346 @@
-import { useEffect, useRef, useState } from 'react';
-import OvertimeForm from './OvertimeForm';
+
+import { useEffect, useState } from 'react';
+import { useAuth } from '../../auth/useAuth';
+import { getOvertimeRecords } from '../../api/overtimeApi';
 import OvertimeDetails from './OvertimeDetails';
 
-// Demo employees until the employee API is connected.
-const employees = [
-  { employee_id: 101, full_name: 'Demo Employee A' },
-  { employee_id: 102, full_name: 'Demo Employee B' },
-  { employee_id: 103, full_name: 'Demo Employee C' },
-];
 const statusClasses = {
-  Pending: 'text-bg-warning', Approved: 'text-bg-success', Rejected: 'text-bg-danger',
+  Pending: 'text-bg-warning',
+  Approved: 'text-bg-success',
+  Rejected: 'text-bg-danger',
+  Cancelled: 'text-bg-secondary',
 };
-const sampleRecords = [
-  { overtime_id: 1, ...employees[0], overtime_date: '2026-09-09', hours_worked: 2, status: 'Approved' },
-  { overtime_id: 2, ...employees[1], overtime_date: '2026-09-09', hours_worked: 1.5, status: 'Pending' },
-  { overtime_id: 3, ...employees[0], overtime_date: '2026-09-08', hours_worked: 0.5, status: 'Rejected' },
-];
-const emptyFilters = { search: '', date: '', status: '' };
+
+const emptyFilters = {
+  search: '',
+  date: '',
+  status: '',
+};
+
+function recordLabel(id) {
+  return `OT-${String(id).padStart(4, '0')}`;
+}
 
 function OvertimeRecords() {
-  // Demo changes reset when the page reloads.
-  const [records, setRecords] = useState(sampleRecords);
+  const { user } = useAuth();
+
+  const [records, setRecords] = useState([]);
   const [filters, setFilters] = useState(emptyFilters);
-  const [activeForm, setActiveForm] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [message, setMessage] = useState('');
-  const addButtonRef = useRef(null);
-  const lastFormTriggerRef = useRef(null);
-  const lastViewRef = useRef(null);
 
-  // Return focus after the form closes and its buttons are enabled again.
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  // Retrieve actual overtime records when the user changes.
   useEffect(() => {
-    if (activeForm === null && lastFormTriggerRef.current) {
-      const target = lastFormTriggerRef.current.isConnected ? lastFormTriggerRef.current : addButtonRef.current;
-      target?.focus();
-      lastFormTriggerRef.current = null;
-    }
-  }, [activeForm]);
+    let cancelled = false;
 
-  const query = filters.search.trim().toLowerCase();
-  const filteredRecords = records.filter((record) => {
-    const label = `OT-${String(record.overtime_id).padStart(4, '0')}`;
-    return `${record.full_name} ${record.employee_id} ${label}`.toLowerCase().includes(query) &&
-      (!filters.date || record.overtime_date === filters.date) &&
-      (!filters.status || record.status === filters.status);
-  });
-  const selectedRecord = records.find((record) => record.overtime_id === selectedId);
+    setLoading(true);
+    setLoadError('');
+    setRecords([]);
+    setSelectedId(null);
+
+    getOvertimeRecords()
+      .then((data) => {
+        if (cancelled) return;
+
+        setRecords(
+          Array.isArray(data.records) ? data.records : []
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+
+        setLoadError(error.message);
+        setRecords([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.employeeId]);
+
+  async function reloadRecords() {
+    setLoading(true);
+    setLoadError('');
+    setSelectedId(null);
+
+    try {
+      const data = await getOvertimeRecords();
+
+      setRecords(
+        Array.isArray(data.records) ? data.records : []
+      );
+    } catch (error) {
+      setRecords([]);
+      setLoadError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function updateFilter(event) {
     const { name, value } = event.target;
-    setFilters((current) => ({ ...current, [name]: value }));
+
+    setFilters((current) => ({
+      ...current,
+      [name]: value,
+    }));
+
     setSelectedId(null);
-    setMessage('');
   }
 
-  function openForm(record, trigger) {
-    lastFormTriggerRef.current = trigger;
-    setActiveForm({ record });
-    setSelectedId(null);
-    setMessage('');
-  }
+  const query = filters.search.trim().toLowerCase();
 
-  // TODO: Check manager permissions and save through the API.
-  function saveRecord(values) {
-    const employee = employees.find((item) => item.employee_id === values.employee_id);
-    if (!employee) return 'Select an employee from the list.';
-    const editingId = activeForm.record?.overtime_id;
-    if (editingId && !records.some((record) => record.overtime_id === editingId)) {
-      return 'This overtime record could not be found.';
-    }
+  const filteredRecords = records.filter((record) => {
+    const label = recordLabel(record.overtime_id);
 
-    // Exclude the current record when checking the employee's total for that date.
-    const otherHours = records.filter((record) =>
-      record.employee_id === employee.employee_id && record.overtime_date === values.overtime_date &&
-      record.overtime_id !== editingId
-    ).reduce((total, record) => total + Math.round(Number(record.hours_worked) * 100), 0);
-    if (otherHours + Math.round(values.hours_worked * 100) > 2400) {
-      return 'Total overtime for an employee on one date cannot exceed 24 hours.';
-    }
+    const matchesSearch =
+      `${record.full_name} ${record.employee_id} ${label}`
+        .toLowerCase()
+        .includes(query);
 
-    const id = editingId ?? Math.max(0, ...records.map((record) => record.overtime_id)) + 1;
-    const updatedRecord = { ...values, ...employee, overtime_id: id };
-    setRecords((current) => editingId
-      ? current.map((record) => record.overtime_id === id ? updatedRecord : record)
-      : [updatedRecord, ...current]
-    );
-    // Show the saved record even if filters were active.
-    setFilters(emptyFilters);
-    setMessage(`Preview overtime OT-${String(id).padStart(4, '0')} ${editingId ? 'updated' : 'added'}. No database record was changed.`);
-    setActiveForm(null);
-    return '';
-  }
+    const matchesDate =
+      !filters.date ||
+      record.overtime_date === filters.date;
 
-  function closeDetails() {
-    setSelectedId(null);
-    if (lastViewRef.current?.isConnected) lastViewRef.current.focus();
-    else addButtonRef.current?.focus();
-  }
+    const matchesStatus =
+      !filters.status ||
+      record.status === filters.status;
+
+    return matchesSearch && matchesDate && matchesStatus;
+  });
+
+  const selectedRecord = records.find(
+    (record) => record.overtime_id === selectedId
+  );
 
   return (
     <div className="mt-4">
-      <button type="button" className="btn btn-primary mb-4" ref={addButtonRef}
-        disabled={activeForm !== null} onClick={(event) => openForm(null, event.currentTarget)}>Add overtime</button>
-      {message && <div className="alert alert-info" role="status">{message}</div>}
-      {activeForm && <OvertimeForm key={activeForm.record?.overtime_id ?? 'new'} record={activeForm.record}
-        employees={employees} statuses={Object.keys(statusClasses)} onSave={saveRecord}
-        onCancel={() => setActiveForm(null)} />}
+      {loadError && (
+        <div className="alert alert-danger" role="alert">
+          <p className="mb-2">{loadError}</p>
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={reloadRecords}
+            disabled={loading}
+          >
+            Try again
+          </button>
+        </div>
+      )}
 
       <div className="row g-3 align-items-end mb-4">
         <div className="col-12 col-md-6 col-lg-4">
-          <label htmlFor="overtime-search" className="form-label">Search employee or record</label>
-          <input id="overtime-search" name="search" type="search" className="form-control"
-            placeholder="Employee name, employee ID or record ID" value={filters.search} onChange={updateFilter} />
+          <label
+            htmlFor="overtime-search"
+            className="form-label"
+          >
+            Search employee or record
+          </label>
+
+          <input
+            id="overtime-search"
+            name="search"
+            type="search"
+            className="form-control"
+            placeholder="Employee name, employee ID or record ID"
+            value={filters.search}
+            onChange={updateFilter}
+          />
         </div>
+
         <div className="col-12 col-md-6 col-lg-3">
-          <label htmlFor="overtime-filter-date" className="form-label">Overtime date</label>
-          <input id="overtime-filter-date" name="date" type="date" className="form-control"
-            value={filters.date} onChange={updateFilter} />
+          <label
+            htmlFor="overtime-filter-date"
+            className="form-label"
+          >
+            Overtime date
+          </label>
+
+          <input
+            id="overtime-filter-date"
+            name="date"
+            type="date"
+            className="form-control"
+            value={filters.date}
+            onChange={updateFilter}
+          />
         </div>
+
         <div className="col-12 col-md-6 col-lg-3">
-          <label htmlFor="overtime-filter-status" className="form-label">Status</label>
-          <select id="overtime-filter-status" name="status" className="form-select"
-            value={filters.status} onChange={updateFilter}>
+          <label
+            htmlFor="overtime-filter-status"
+            className="form-label"
+          >
+            Status
+          </label>
+
+          <select
+            id="overtime-filter-status"
+            name="status"
+            className="form-select"
+            value={filters.status}
+            onChange={updateFilter}
+          >
             <option value="">All statuses</option>
-            {Object.keys(statusClasses).map((status) => <option key={status} value={status}>{status}</option>)}
+
+            {Object.keys(statusClasses).map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
           </select>
         </div>
+
         <div className="col-12 col-md-6 col-lg-2">
-          <button type="button" className="btn btn-outline-secondary w-100" onClick={() => {
-            setFilters(emptyFilters); setSelectedId(null); setMessage('');
-          }}>Reset filters</button>
+          <button
+            type="button"
+            className="btn btn-outline-secondary w-100"
+            onClick={() => {
+              setFilters(emptyFilters);
+              setSelectedId(null);
+            }}
+          >
+            Reset filters
+          </button>
         </div>
       </div>
 
-      <div className="row g-4">
-        <div className={selectedRecord ? 'col-12 col-xl-8' : 'col-12'}>
-          <p className="small" role="status">Showing {filteredRecords.length} of {records.length} demo records.</p>
-          <div className="table-responsive" role="region" aria-label="Overtime records table" tabIndex={0}>
-            <table className="table table-hover align-middle mb-0 small">
-              <caption className="visually-hidden">Fictional overtime records with view and edit actions.</caption>
-              <thead className="table-light"><tr>
-                <th scope="col">Record ID</th><th scope="col">Employee</th><th scope="col">Date</th>
-                <th scope="col">Hours</th><th scope="col">Status</th><th scope="col">Actions</th>
-              </tr></thead>
-              <tbody>
-                {filteredRecords.map((record) => (
-                  <tr key={record.overtime_id} className={selectedId === record.overtime_id ? 'table-primary' : ''}>
-                    <th scope="row" className="fw-normal text-nowrap">OT-{String(record.overtime_id).padStart(4, '0')}</th>
-                    <td>{record.full_name}<span className="d-block text-secondary">ID: {record.employee_id}</span></td>
-                    <td className="text-nowrap">{record.overtime_date}</td><td>{Number(record.hours_worked).toFixed(2)}</td>
-                    <td><span className={`badge ${statusClasses[record.status]}`}>{record.status}</span></td>
-                    <td><div className="d-flex flex-wrap gap-2">
-                      <button type="button" className="btn btn-sm btn-outline-primary" disabled={activeForm !== null}
-                        aria-label={`View overtime OT-${String(record.overtime_id).padStart(4, '0')} for ${record.full_name}`}
-                        aria-pressed={selectedId === record.overtime_id} onClick={(event) => {
-                          lastViewRef.current = event.currentTarget; setSelectedId(record.overtime_id); setMessage('');
-                        }}>View</button>
-                      <button type="button" className="btn btn-sm btn-outline-secondary" disabled={activeForm !== null}
-                        aria-label={`Edit overtime OT-${String(record.overtime_id).padStart(4, '0')} for ${record.full_name}`}
-                        onClick={(event) => openForm(record, event.currentTarget)}>Edit</button>
-                    </div></td>
+      {loading ? (
+        <p role="status">Loading overtime records...</p>
+      ) : (
+        <div className="row g-4">
+          <div
+            className={
+              selectedRecord
+                ? 'col-12 col-xl-8'
+                : 'col-12'
+            }
+          >
+            <p className="small text-secondary" role="status">
+              Showing {filteredRecords.length} of{' '}
+              {records.length} overtime records.
+            </p>
+
+            <div
+              className="table-responsive"
+              role="region"
+              aria-label="Overtime records table"
+              tabIndex={0}
+            >
+              <table className="table table-hover align-middle mb-0 small">
+                <caption className="visually-hidden">
+                  Employee overtime records
+                </caption>
+
+                <thead className="table-light">
+                  <tr>
+                    <th scope="col">Record ID</th>
+                    <th scope="col">Employee</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Hours</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Action</th>
                   </tr>
-                ))}
-                {filteredRecords.length === 0 && <tr><td colSpan={6} className="text-center text-secondary py-4">No records match these filters.</td></tr>}
-              </tbody>
-            </table>
+                </thead>
+
+                <tbody>
+                  {filteredRecords.map((record) => (
+                    <tr
+                      key={record.overtime_id}
+                      className={
+                        selectedId === record.overtime_id
+                          ? 'table-primary'
+                          : ''
+                      }
+                    >
+                      <th
+                        scope="row"
+                        className="fw-normal text-nowrap"
+                      >
+                        {recordLabel(record.overtime_id)}
+                      </th>
+
+                      <td>
+                        {record.full_name}
+
+                        <span className="d-block text-secondary">
+                          ID: {record.employee_id}
+                        </span>
+                      </td>
+
+                      <td className="text-nowrap">
+                        {record.overtime_date}
+                      </td>
+
+                      <td>
+                        {Number(record.hours_worked).toFixed(2)}
+                      </td>
+
+                      <td>
+                        <span
+                          className={`badge ${
+                            statusClasses[record.status] ||
+                            'text-bg-secondary'
+                          }`}
+                        >
+                          {record.status}
+                        </span>
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          aria-label={`View overtime ${recordLabel(
+                            record.overtime_id
+                          )} for ${record.full_name}`}
+                          onClick={() =>
+                            setSelectedId(record.overtime_id)
+                          }
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {filteredRecords.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="text-center text-secondary py-4"
+                      >
+                        {loadError
+                          ? 'Unable to load overtime records.'
+                          : 'No overtime records found.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {selectedRecord && (
+            <div className="col-12 col-xl-4">
+              <OvertimeDetails
+                key={selectedRecord.overtime_id}
+                record={selectedRecord}
+                onClose={() => setSelectedId(null)}
+              />
+            </div>
+          )}
         </div>
-        {selectedRecord && <div className="col-12 col-xl-4">
-          <OvertimeDetails key={selectedRecord.overtime_id} record={selectedRecord} onEdit={openForm} onClose={closeDetails} />
-        </div>}
-      </div>
+      )}
     </div>
   );
 }

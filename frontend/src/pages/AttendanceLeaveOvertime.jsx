@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import ModuleSectionNav from '../components/attendance/ModuleSectionNav';
 import AttendanceRecords from '../components/attendance/AttendanceRecords';
@@ -75,19 +76,19 @@ function AttendanceLeaveOvertime() {
               {selectedSection.title}
             </h3>
 
-            <span
-  className={`badge ${
-    activeSection === 'attendance'
-      ? 'text-bg-success'
-      : 'text-bg-secondary'
-  }`}
->
-  {activeSection === 'attendance'
-    ? 'Live data'
-    : ['leave', 'overtime'].includes(activeSection)
-      ? 'Demo data'
-      : 'Coming soon'}
-</span>
+
+        <span
+             className={`badge ${
+             ['attendance', 'leave', 'overtime'].includes(activeSection)
+             ? 'text-bg-success'
+             : 'text-bg-secondary'
+             }`}
+                >
+              {['attendance', 'leave', 'overtime'].includes(activeSection)
+               ? 'Live data'
+               : 'Coming soon'}
+        </span>
+
           </div>
 
           <p className="mb-0">

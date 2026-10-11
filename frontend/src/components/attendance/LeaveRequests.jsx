@@ -1,216 +1,703 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '../../auth/useAuth';
+import {
+  getLeaveRequests,
+  submitLeaveRequest,
+  updateLeaveRequest,
+  cancelLeaveRequest,
+  reviewLeaveRequest,
+} from '../../api/leaveApi';
 import LeaveRequestForm from './LeaveRequestForm';
-import LeaveRequestDetails from './LeaveRequestDetails';
-
-const leaveTypes = ['Annual Leave', 'Sick Leave', 'Casual Leave', 'Maternity Leave'];
-const statusClasses = {
-  Pending: 'text-bg-warning', Approved: 'text-bg-success', Rejected: 'text-bg-danger',
-};
-
-// Demo users until login is connected.
-const previewEmployee = { employee_id: 103, full_name: 'Demo Employee C' };
-const previewManager = { employee_id: 104, full_name: 'Demo Manager' };
-const sampleRequests = [
-  {
-    leave_request_id: 1, employee_id: 101, full_name: 'Demo Employee A',
-    leave_type: 'Annual Leave', start_date: '2026-09-14', end_date: '2026-09-16',
-    reason: 'Fictional family event.', status: 'Pending',
-  },
-  {
-    leave_request_id: 2, employee_id: 102, full_name: 'Demo Employee B',
-    leave_type: 'Sick Leave', start_date: '2026-09-11', end_date: '2026-09-11',
-    reason: 'Fictional appointment.', status: 'Approved',
-  },
-  {
-    leave_request_id: 3, employee_id: 103, full_name: 'Demo Employee C',
-    leave_type: 'Casual Leave', start_date: '2026-09-18', end_date: '2026-09-18',
-    reason: 'Fictional personal commitment.', status: 'Rejected',
-  },
-  {
-    leave_request_id: 4, ...previewManager,
-    leave_type: 'Annual Leave', start_date: '2026-09-21', end_date: '2026-09-22',
-    reason: 'Fictional manager request for testing the own-request rule.', status: 'Pending',
-  },
+import LeaveReviewForm from './LeaveReviewForm';
+const leaveTypes = [
+  'Annual Leave',
+  'Sick Leave',
+  'Casual Leave',
+  'Maternity Leave',
 ];
-const emptyFilters = { search: '', type: '', status: '', from: '', to: '' };
-
+const statusClasses = {
+  Pending: 'text-bg-warning',
+  Approved: 'text-bg-success',
+  Rejected: 'text-bg-danger',
+  Cancelled: 'text-bg-secondary',
+};
+const emptyFilters = {
+  search: '',
+  type: '',
+  status: '',
+  from: '',
+  to: '',
+};
+function requestLabel(id) {
+  return `LR-${String(id).padStart(4, '0')}`;
+}
 function LeaveRequests() {
-  // Demo changes reset when the page reloads.
-  const [requests, setRequests] = useState(sampleRequests);
+  const { user } = useAuth();
+  const canSubmitLeave = ['Pharmacist', 'Pharmacy Assistant'].includes(user?.roleName);
+  const [requests, setRequests] = useState([]);
   const [filters, setFilters] = useState(emptyFilters);
   const [selectedId, setSelectedId] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingRequest, setEditingRequest] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [cancellingId, setCancellingId] = useState(null);
+  const [reviewingRequest, setReviewingRequest] = useState(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState('');
   const [message, setMessage] = useState('');
   const submitButtonRef = useRef(null);
-  const lastViewRef = useRef(null);
-  const restoreSubmitFocusRef = useRef(false);
-
-  // Return focus to the button that opened the form.
+  const submittingRef = useRef(false);
+  const cancellingRef = useRef(false);
+  const reviewingRef = useRef(false);
+  // Load saved leave requests.
   useEffect(() => {
-    if (!formOpen && restoreSubmitFocusRef.current) {
-      submitButtonRef.current?.focus();
-      restoreSubmitFocusRef.current = false;
+    let cancelled = false;
+    getLeaveRequests()
+      .then((data) => {
+        if (cancelled) return;
+        setRequests(
+          Array.isArray(data.requests) ? data.requests : []
+        );
+        setLoadError('');
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(error.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.employeeId]);
+  async function reloadRequests() {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const data = await getLeaveRequests();
+      setRequests(
+        Array.isArray(data.requests) ? data.requests : []
+      );
+    } catch (error) {
+      setLoadError(error.message);
+    } finally {
+      setLoading(false);
     }
-  }, [formOpen]);
-
-  const invalidRange = filters.from && filters.to && filters.to < filters.from;
+  }
+  const invalidRange =
+    filters.from &&
+    filters.to &&
+    filters.to < filters.from;
   const query = filters.search.trim().toLowerCase();
-
-  // Include leave that overlaps the selected dates.
   const filteredRequests = requests.filter((request) => {
-    const label = `LR-${String(request.leave_request_id).padStart(4, '0')}`;
-    return !invalidRange &&
-      `${request.full_name} ${request.employee_id} ${label}`.toLowerCase().includes(query) &&
+    const label = requestLabel(request.leave_request_id);
+    return (
+      !invalidRange &&
+      `${request.full_name} ${request.employee_id} ${label}`
+        .toLowerCase()
+        .includes(query) &&
       (!filters.type || request.leave_type === filters.type) &&
       (!filters.status || request.status === filters.status) &&
       (!filters.from || request.end_date >= filters.from) &&
-      (!filters.to || request.start_date <= filters.to);
+      (!filters.to || request.start_date <= filters.to)
+    );
   });
-  const selectedRequest = requests.find((request) => request.leave_request_id === selectedId);
-
+  const selectedRequest = requests.find(
+    (request) => request.leave_request_id === selectedId
+  );
+  const currentEmployee = {
+    employee_id: user?.employeeId,
+    full_name:
+      user?.fullName ||
+      user?.username ||
+      'Signed-in employee',
+  };
+  // Employees can manage only their own Pending requests.
+  const canManageSelected =
+  canSubmitLeave &&
+  selectedRequest?.status === 'Pending' &&
+  Number(selectedRequest?.employee_id) === Number(user?.employeeId);
+  // Managers can review another employee's Pending request.
+  const canReviewSelected =
+    user?.roleName === 'Owner/Manager' &&
+    selectedRequest?.status === 'Pending' &&
+    Number(selectedRequest.employee_id) !==
+      Number(user?.employeeId);
   function updateFilter(event) {
     const { name, value } = event.target;
-    setFilters((current) => ({ ...current, [name]: value }));
+    setFilters((current) => ({
+      ...current,
+      [name]: value,
+    }));
+    setSelectedId(null);
+    setActionError('');
+    setReviewingRequest(null);
+    setReviewError('');
+  }
+  function openCreateForm() {
+    setEditingRequest(null);
     setSelectedId(null);
     setMessage('');
+    setSubmitError('');
+    setActionError('');
+    setFormOpen(true);
   }
-
+  function openEditForm(request) {
+    if (
+      request.status !== 'Pending' ||
+      Number(request.employee_id) !== Number(user?.employeeId)
+    ) {
+      setActionError(
+        'You can only edit your own Pending leave requests.'
+      );
+      return;
+    }
+    setEditingRequest(request);
+    setSelectedId(request.leave_request_id);
+    setMessage('');
+    setSubmitError('');
+    setActionError('');
+    setFormOpen(true);
+  }
   function closeForm() {
-    restoreSubmitFocusRef.current = true;
     setFormOpen(false);
+    setEditingRequest(null);
+    setSubmitError('');
+    submitButtonRef.current?.focus();
   }
-
-  function addRequest(values) {
-    const nextId = Math.max(0, ...requests.map((request) => request.leave_request_id)) + 1;
-    setRequests((current) => [{
-      ...values, ...previewEmployee, leave_request_id: nextId, status: 'Pending',
-    }, ...current]);
-    // Show the new request even if filters were active.
-    setFilters(emptyFilters);
-    setSelectedId(null);
-    setMessage(`Preview request LR-${String(nextId).padStart(4, '0')} added with Pending status. No database record was created.`);
-    closeForm();
+  // Create or update a request using the appropriate API.
+  async function saveRequest(values) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSubmitError('');
+    setMessage('');
+    const isEditing = Boolean(editingRequest);
+    try {
+      const result = isEditing
+        ? await updateLeaveRequest(
+            editingRequest.leave_request_id,
+            values
+          )
+        : await submitLeaveRequest(values);
+      if (!result.request?.leave_request_id) {
+        throw new Error(
+          'Unable to confirm the saved request. Please refresh.'
+        );
+      }
+      // Use the record returned by the backend.
+      setRequests((current) => {
+        const remaining = current.filter(
+          (item) =>
+            item.leave_request_id !==
+            result.request.leave_request_id
+        );
+        return [result.request, ...remaining];
+      });
+      setFilters(emptyFilters);
+      if (isEditing) {
+        setSelectedId(result.request.leave_request_id);
+        setMessage('Leave request updated successfully.');
+      } else {
+        setSelectedId(null);
+        setMessage('Leave request submitted successfully.');
+      }
+      closeForm();
+    } catch (error) {
+      setSubmitError(
+        error.message || 'Unable to save leave request.'
+      );
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
-
-  // TODO: Enforce these rules in the API when leave requests are connected.
-  function decideRequest(requestId, decision) {
-    const request = requests.find((item) => item.leave_request_id === requestId);
-    if (!request) return 'The request could not be found.';
-    if (request.employee_id === previewManager.employee_id) return 'Another manager must review your own request.';
-    if (request.status !== 'Pending') return 'Only a pending request can be decided.';
-    if (!['Approved', 'Rejected'].includes(decision)) return 'Select approval or rejection.';
-    setRequests((current) => current.map((item) =>
-      item.leave_request_id === requestId ? { ...item, status: decision } : item
-    ));
-    setFilters(emptyFilters);
-    setMessage(`Preview request LR-${String(requestId).padStart(4, '0')} ${decision.toLowerCase()}. No database record was changed.`);
-    return '';
+  // Cancel a Pending request after confirmation.
+  async function handleCancelRequest(request) {
+    if (cancellingRef.current) return;
+    if (
+      request.status !== 'Pending' ||
+      Number(request.employee_id) !== Number(user?.employeeId)
+    ) {
+      setActionError(
+        'You can only cancel your own Pending leave requests.'
+      );
+      return;
+    }
+    const confirmed = window.confirm(
+      `Are you sure you want to cancel ${requestLabel(
+        request.leave_request_id
+      )}?`
+    );
+    if (!confirmed) return;
+    cancellingRef.current = true;
+    setCancellingId(request.leave_request_id);
+    setActionError('');
+    setMessage('');
+    try {
+      const result = await cancelLeaveRequest(
+        request.leave_request_id
+      );
+      if (!result.request) {
+        throw new Error(
+          'Unable to confirm cancellation. Please refresh.'
+        );
+      }
+      setRequests((current) =>
+        current.map((item) =>
+          item.leave_request_id ===
+          result.request.leave_request_id
+            ? result.request
+            : item
+        )
+      );
+      setFilters(emptyFilters);
+      setMessage(
+        `${requestLabel(request.leave_request_id)} cancelled successfully.`
+      );
+    } catch (error) {
+      setActionError(
+        error.message || 'Unable to cancel leave request.'
+      );
+    } finally {
+      cancellingRef.current = false;
+      setCancellingId(null);
+    }
   }
+  async function handleReview({ decision, review_note }) {
+    if (!reviewingRequest || reviewingRef.current) return;
 
-  function closeDetails() {
-    setSelectedId(null);
-    if (lastViewRef.current?.isConnected) lastViewRef.current.focus();
-    else submitButtonRef.current?.focus();
+    // Backend is responsible for authorizing and saving this decision.
+    reviewingRef.current = true;
+    setReviewSubmitting(true);
+    setReviewError('');
+    setMessage('');
+
+    try {
+      const result = await reviewLeaveRequest(
+        reviewingRequest.leave_request_id,
+        decision,
+        review_note
+      );
+
+      if (!result.request?.leave_request_id) {
+        throw new Error('Unable to confirm the decision. Please refresh.');
+      }
+
+      setRequests((current) =>
+        current.map((item) =>
+          item.leave_request_id === result.request.leave_request_id
+            ? result.request
+            : item
+        )
+      );
+
+      setFilters(emptyFilters);
+      setSelectedId(result.request.leave_request_id);
+      setReviewingRequest(null);
+      setMessage(
+        decision === 'Approved'
+          ? 'Leave request approved successfully.'
+          : 'Leave request rejected successfully.'
+      );
+    } catch (error) {
+      setReviewError(error.message || 'Unable to review leave request.');
+    } finally {
+      reviewingRef.current = false;
+      setReviewSubmitting(false);
+    }
   }
 
   return (
     <div className="mt-4">
-
-      <button type="button" className="btn btn-primary mb-4" ref={submitButtonRef}
-        disabled={formOpen} onClick={() => {
-          setMessage(''); setSelectedId(null); setFormOpen(true);
-        }}>
-        Submit leave request
-      </button>
-      {message && <div className="alert alert-info" role="status">{message}</div>}
-      {formOpen && <LeaveRequestForm employee={previewEmployee} leaveTypes={leaveTypes}
-        onSubmit={addRequest} onCancel={closeForm} />}
-
+      {canSubmitLeave && (
+  <button
+    type="button"
+    className="btn btn-primary mb-4"
+    ref={submitButtonRef}
+    disabled={formOpen || Boolean(reviewingRequest)}
+    onClick={openCreateForm}
+  >
+    Submit leave request
+  </button>
+)}
+      {message && (
+        <div className="alert alert-success" role="status">
+          {message}
+        </div>
+      )}
+      {loadError && (
+        <div className="alert alert-danger" role="alert">
+          <p className="mb-2">{loadError}</p>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={reloadRequests}
+            disabled={loading}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+      {submitError && (
+        <div className="alert alert-danger" role="alert">
+          {submitError}
+        </div>
+      )}
+      {actionError && (
+        <div className="alert alert-danger" role="alert">
+          {actionError}
+        </div>
+      )}
+      {formOpen && (
+        <LeaveRequestForm
+          key={
+            editingRequest
+              ? `edit-${editingRequest.leave_request_id}`
+              : 'create'
+          }
+          employee={currentEmployee}
+          leaveTypes={leaveTypes}
+          initialRequest={editingRequest}
+          onSubmit={saveRequest}
+          onCancel={closeForm}
+          submitting={submitting}
+        />
+      )}
       <div className="row g-3 align-items-end mb-3">
         <div className="col-12 col-md-6 col-xl-4">
-          <label htmlFor="leave-search" className="form-label">Search employee or request</label>
-          <input id="leave-search" name="search" type="search" className="form-control"
-            placeholder="Employee name, employee ID or request ID"
-            value={filters.search} onChange={updateFilter} />
+          <label
+            htmlFor="leave-search"
+            className="form-label"
+          >
+            Search employee or request
+          </label>
+          <input
+            id="leave-search"
+            name="search"
+            type="search"
+            className="form-control"
+            placeholder="Employee name, ID or request ID"
+            value={filters.search}
+            onChange={updateFilter}
+          />
         </div>
         <div className="col-12 col-md-6 col-xl-4">
-          <label htmlFor="leave-type-filter" className="form-label">Leave type</label>
-          <select id="leave-type-filter" name="type" className="form-select"
-            value={filters.type} onChange={updateFilter}>
+          <label
+            htmlFor="leave-type-filter"
+            className="form-label"
+          >
+            Leave type
+          </label>
+          <select
+            id="leave-type-filter"
+            name="type"
+            className="form-select"
+            value={filters.type}
+            onChange={updateFilter}
+          >
             <option value="">All leave types</option>
-            {leaveTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+            {leaveTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
           </select>
         </div>
         <div className="col-12 col-md-6 col-xl-4">
-          <label htmlFor="leave-status-filter" className="form-label">Status</label>
-          <select id="leave-status-filter" name="status" className="form-select"
-            value={filters.status} onChange={updateFilter}>
+          <label
+            htmlFor="leave-status-filter"
+            className="form-label"
+          >
+            Status
+          </label>
+          <select
+            id="leave-status-filter"
+            name="status"
+            className="form-select"
+            value={filters.status}
+            onChange={updateFilter}
+          >
             <option value="">All statuses</option>
-            {Object.keys(statusClasses).map((status) => <option key={status} value={status}>{status}</option>)}
+            {Object.keys(statusClasses).map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
           </select>
         </div>
         <div className="col-12 col-md-6 col-xl-4">
-          <label htmlFor="leave-filter-from" className="form-label">Date range: from</label>
-          <input id="leave-filter-from" name="from" type="date" className="form-control"
-            value={filters.from} onChange={updateFilter}/>
+          <label
+            htmlFor="leave-filter-from"
+            className="form-label"
+          >
+            Date range: from
+          </label>
+          <input
+            id="leave-filter-from"
+            name="from"
+            type="date"
+            className="form-control"
+            value={filters.from}
+            onChange={updateFilter}
+          />
         </div>
         <div className="col-12 col-md-6 col-xl-4">
-          <label htmlFor="leave-filter-to" className="form-label">Date range: to</label>
-          <input id="leave-filter-to" name="to" type="date"
-            className={`form-control${invalidRange ? ' is-invalid' : ''}`}
-            value={filters.to} onChange={updateFilter} aria-invalid={Boolean(invalidRange)}
-            aria-describedby={invalidRange ? 'leave-range-error' : undefined} />
+          <label
+            htmlFor="leave-filter-to"
+            className="form-label"
+          >
+            Date range: to
+          </label>
+          <input
+            id="leave-filter-to"
+            name="to"
+            type="date"
+            className={`form-control${
+              invalidRange ? ' is-invalid' : ''
+            }`}
+            value={filters.to}
+            onChange={updateFilter}
+          />
         </div>
         <div className="col-12 col-md-6 col-xl-4">
-          <button type="button" className="btn btn-outline-secondary w-100" onClick={() => {
-            setFilters(emptyFilters); setSelectedId(null); setMessage('');
-          }}>Reset filters</button>
+          <button
+            type="button"
+            className="btn btn-outline-secondary w-100"
+            onClick={() => {
+              setFilters(emptyFilters);
+              setSelectedId(null);
+              setActionError('');
+              setReviewingRequest(null);
+              setReviewError('');
+            }}
+          >
+            Reset filters
+          </button>
         </div>
       </div>
-      {invalidRange && <div id="leave-range-error" className="alert alert-danger" role="alert">The end of the date range cannot be before its start.</div>}
-
-      <div className="row g-4">
-        <div className={selectedRequest ? 'col-12 col-xl-8' : 'col-12'}>
-          <p className="small" role="status">Showing {filteredRequests.length} of {requests.length} demo requests.</p>
-          <div className="table-responsive" role="region" aria-label="Leave requests table" tabIndex={0}>
-            <table className="table table-hover align-middle mb-0 small">
-              <caption className="visually-hidden">Fictional leave requests. Use View to open request details.</caption>
-              <thead className="table-light"><tr>
-                <th scope="col">Request ID</th><th scope="col">Employee</th>
-                <th scope="col">Leave type</th><th scope="col">Start date</th>
-                <th scope="col">End date</th><th scope="col">Status</th><th scope="col">Action</th>
-              </tr></thead>
+      {invalidRange && (
+        <div className="alert alert-danger" role="alert">
+          The end date cannot be before the start date.
+        </div>
+      )}
+      {loading ? (
+        <p role="status">Loading leave requests...</p>
+      ) : (
+        <>
+          <p className="small text-secondary" role="status">
+            Showing {filteredRequests.length} of{' '}
+            {requests.length} saved requests.
+          </p>
+          <div className="table-responsive">
+            <table className="table table-hover align-middle small">
+              <thead className="table-light">
+                <tr>
+                  <th>Request ID</th>
+                  <th>Employee</th>
+                  <th>Leave type</th>
+                  <th>Start date</th>
+                  <th>End date</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
               <tbody>
                 {filteredRequests.map((request) => (
-                  <tr key={request.leave_request_id} className={selectedId === request.leave_request_id ? 'table-primary' : ''}>
-                    <th scope="row" className="fw-normal text-nowrap">LR-{String(request.leave_request_id).padStart(4, '0')}</th>
-                    <td>{request.full_name}<span className="d-block text-secondary">ID: {request.employee_id}</span></td>
+                  <tr key={request.leave_request_id}>
+                    <td>
+                      {requestLabel(request.leave_request_id)}
+                    </td>
+                    <td>
+                      {request.full_name}
+                      <span className="d-block text-secondary">
+                        ID: {request.employee_id}
+                      </span>
+                    </td>
                     <td>{request.leave_type}</td>
-                    <td className="text-nowrap">{request.start_date}</td><td className="text-nowrap">{request.end_date}</td>
-                    <td><span className={`badge ${statusClasses[request.status]}`}>{request.status}</span></td>
-                    <td><button type="button" className="btn btn-sm btn-outline-primary" disabled={formOpen}
-                      aria-label={`View request LR-${String(request.leave_request_id).padStart(4, '0')} for ${request.full_name}`}
-                      aria-pressed={selectedId === request.leave_request_id}
-                      onClick={(event) => {
-                        lastViewRef.current = event.currentTarget;
-                        setSelectedId(request.leave_request_id); setMessage('');
-                      }}>View</button></td>
+                    <td>{request.start_date}</td>
+                    <td>{request.end_date}</td>
+                    <td>
+                      <span
+                        className={`badge ${
+                          statusClasses[request.status] ||
+                          'text-bg-secondary'
+                        }`}
+                      >
+                        {request.status}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        disabled={formOpen || Boolean(reviewingRequest)}
+                        onClick={() => {
+                          setActionError('');
+                          setSelectedId(
+                            request.leave_request_id
+                          );
+                        }}
+                      >
+                        View
+                      </button>
+                    </td>
                   </tr>
                 ))}
-                {filteredRequests.length === 0 && <tr><td colSpan={7} className="text-center text-secondary py-4">
-                  {invalidRange ? 'Correct the date range to view requests.' : 'No requests match these filters.'}
-                </td></tr>}
+                {filteredRequests.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="text-center text-secondary py-4"
+                    >
+                      {loadError
+                        ? 'Unable to load leave requests.'
+                        : invalidRange
+                          ? 'Correct the date range.'
+                          : 'No leave requests found.'}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
-        </div>
-        {selectedRequest && <div className="col-12 col-xl-4">
-          <LeaveRequestDetails key={selectedRequest.leave_request_id} request={selectedRequest}
-            manager={previewManager} onDecision={decideRequest} onClose={closeDetails} />
-        </div>}
-      </div>
+        </>
+      )}
+      {selectedRequest && (
+        <section className="border rounded p-3 mt-3">
+          <div className="d-flex justify-content-between align-items-start">
+            <h4 className="h5">
+              Leave request details
+            </h4>
+            <button
+              type="button"
+              className="btn-close"
+              aria-label="Close details"
+              disabled={formOpen || cancellingId !== null || Boolean(reviewingRequest)}
+              onClick={() => {
+                setSelectedId(null);
+                setActionError('');
+              }}
+            />
+          </div>
+          <p>
+            <strong>Request:</strong>{' '}
+            {requestLabel(selectedRequest.leave_request_id)}
+          </p>
+          <p>
+            <strong>Employee:</strong>{' '}
+            {selectedRequest.full_name}
+          </p>
+          <p>
+            <strong>Leave type:</strong>{' '}
+            {selectedRequest.leave_type}
+          </p>
+          <p>
+            <strong>Dates:</strong>{' '}
+            {selectedRequest.start_date} to{' '}
+            {selectedRequest.end_date}
+          </p>
+          <p>
+            <strong>Reason:</strong>{' '}
+            {selectedRequest.reason || 'Not provided'}
+          </p>
+          <p>
+            <strong>Status:</strong>{' '}
+            <span
+              className={`badge ${
+                statusClasses[selectedRequest.status] ||
+                'text-bg-secondary'
+              }`}
+            >
+              {selectedRequest.status}
+            </span>
+          </p>
+          {canReviewSelected && !formOpen && !reviewingRequest && (
+            <button
+              type="button"
+              className="btn btn-outline-primary"
+              onClick={() => {
+                setReviewError('');
+                setActionError('');
+                setReviewingRequest(selectedRequest);
+              }}
+            >
+              Review Request
+            </button>
+          )}
+
+          {reviewingRequest?.leave_request_id ===
+            selectedRequest.leave_request_id && (
+            <>
+              {reviewError && (
+                <div className="alert alert-danger mt-3" role="alert">
+                  {reviewError}
+                </div>
+              )}
+              <LeaveReviewForm
+                request={reviewingRequest}
+                onSubmit={handleReview}
+                onCancel={() => {
+                  setReviewingRequest(null);
+                  setReviewError('');
+                }}
+                submitting={reviewSubmitting}
+              />
+            </>
+          )}
+
+          {canManageSelected && !formOpen && (
+            <div className="d-flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-outline-primary"
+                disabled={cancellingId !== null}
+                onClick={() =>
+                  openEditForm(selectedRequest)
+                }
+              >
+                Edit Request
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-danger"
+                disabled={cancellingId !== null}
+                onClick={() =>
+                  handleCancelRequest(selectedRequest)
+                }
+              >
+                {cancellingId ===
+                selectedRequest.leave_request_id
+                  ? 'Cancelling...'
+                  : 'Cancel Request'}
+              </button>
+            </div>
+          )}
+          {selectedRequest.status === 'Pending' &&
+            !canManageSelected && !canReviewSelected && (
+              <p className="text-secondary small mb-0">
+                Only the employee who submitted this request
+                can edit or cancel it.
+              </p>
+            )}
+          {['Approved', 'Rejected'].includes(
+            selectedRequest.status
+          ) && (
+            <p className="text-secondary small mb-0">
+              This request has already been reviewed.
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
 }
-
 export default LeaveRequests;
