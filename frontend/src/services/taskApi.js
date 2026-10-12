@@ -31,6 +31,16 @@ export const getTaskSection = (section, signal) => request(`/${section}`, { sign
 export const createTaskSection = (section, record) => request(`/${section}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record),
 });
+export const updateTaskSection = (section, id, record) =>
+  request(`/${section}/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record),
+  });
+export const deactivateTaskSection = (section, id) =>
+  request(`/${section}/${id}`, {
+    method: 'DELETE',
+  });
 export const getTaskOptions = (signal) => request('/options', { signal });
 export const createTask = (task) => request('', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(task),

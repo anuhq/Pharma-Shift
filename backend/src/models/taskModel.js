@@ -19,7 +19,7 @@ async function list(currentUser) {
   }
 
   query +=
-    ' ORDER BY a.assigned_date DESC, a.assignment_id DESC';
+    ' ORDER BY a.assignment_id DESC';
 
   const [rows] = await pool.execute(query, parameters);
   return rows;
@@ -157,7 +157,7 @@ async function updateAssignee(id, userId) {
     const [users] = await connection.execute("SELECT u.employee_id FROM user u JOIN employee e ON e.employee_id = u.employee_id WHERE u.user_id = ? AND u.status = 'Active' AND e.status = 'Active' FOR UPDATE", [userId]);
     if (!users.length) throw Object.assign(new Error('This user is no longer active. Refresh the task list and choose another user.'), { status: 400 });
     await connection.execute('UPDATE task_assignment SET employee_id = ?, shift_type_id = NULL WHERE assignment_id = ?', [users[0].employee_id, id]);
-    const task = await find(id, connection);
+    const task = await find(id, { role_name: 'Owner/Manager' }, connection);
     await connection.commit();
     return task;
   } catch (error) {

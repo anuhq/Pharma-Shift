@@ -15,7 +15,8 @@ test('progress validation allows supported statuses and bounded notes only', () 
   }
 });
 
-const valid = { title: ' Check stock ', employee_id: 1, assigned_date: '2026-09-12', priority: 'Medium', due_time: '09:30' };
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(new Date());
+const valid = { title: ' Check stock ', employee_id: 1, assigned_date: today, priority: 'Medium', due_time: '09:30' };
 
 test('accepts user tasks, trims text and supports existing templates', () => {
   const result = validateTask(valid);
@@ -24,7 +25,17 @@ test('accepts user tasks, trims text and supports existing templates', () => {
   assert.deepEqual(validateTask({ ...valid, title: undefined, template_id: 2 }).errors, {});
   assert.ok(validateTask({ ...valid, employee_id: null, shift_type_id: 3 }).errors.shift_type_id);
   assert.deepEqual(validateTask({ ...valid, due_time: null }).errors, {});
-  assert.deepEqual(validateTask({ ...valid, assigned_date: '2028-02-29' }).errors, {});
+  assert.deepEqual(validateTask({ ...valid, assigned_date: '2028-02-29' }, new Date('2028-02-28T00:00:00Z')).errors, {});
+});
+
+test('task dates reject yesterday and allow today and tomorrow using Colombo midnight', () => {
+  const now = new Date('2026-10-10T18:30:00Z');
+  assert.equal(validateTask({ ...valid, assigned_date: '2026-10-10' }, now).errors.assigned_date,
+    'Task date cannot be before today. Select today or a future date.');
+  for (const assigned_date of ['2026-10-11', '2026-10-12']) {
+    assert.deepEqual(validateTask({ ...valid, assigned_date }, now).errors, {});
+  }
+  assert.deepEqual(validateTask({ ...valid, assigned_date: '2026-10-10' }, new Date('2026-10-10T18:29:59Z')).errors, {});
 });
 
 test('rejects malformed values, impossible dates and ambiguous assignees', () => {
@@ -140,6 +151,18 @@ test('HTTP rejects invalid input and returns missing-record errors', async () =>
   const malformed = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' });
   assert.equal(malformed.status, 400);
   assert.equal((await malformed.json()).message, 'Request body must be valid JSON.');
+});
+
+test('HTTP rejects a past task date without saving a record', async () => {
+  const count = records.length;
+  const response = await fetch(base, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...valid, assigned_date: '2020-01-01' }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).errors.assigned_date,
+    'Task date cannot be before today. Select today or a future date.');
+  assert.equal(records.length, count);
 });
 
 test('progress endpoint updates only progress fields and handles bad requests', async () => {

@@ -14,11 +14,15 @@ const handoverHandlers = sectionController('handovers');
 router.get('/templates', templateHandlers.list);
 router.get('/templates/:id', templateHandlers.find);
 router.post('/templates', managerOnly, templateHandlers.create);
+router.patch('/templates/:id', managerOnly, templateHandlers.update);
+router.delete('/templates/:id', managerOnly, templateHandlers.deactivate);
 
 // Checklists: everyone can view; only managers can create.
 router.get('/checklists', checklistHandlers.list);
 router.get('/checklists/:id', checklistHandlers.find);
 router.post('/checklists', managerOnly, checklistHandlers.create);
+router.patch('/checklists/:id', managerOnly, checklistHandlers.update);
+router.delete('/checklists/:id', managerOnly, checklistHandlers.deactivate);
 
 // Handovers: authenticated managers and staff can view and record them.
 router.get('/handovers', handoverHandlers.list);

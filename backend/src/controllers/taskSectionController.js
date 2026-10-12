@@ -62,5 +62,61 @@ module.exports = function sectionController(section) {
 
       return res.status(201).json({ record });
     },
+        update: async (req, res) => {
+      if (section !== 'templates' && section !== 'checklists') {
+        return res.status(400).json({
+          message: 'This record cannot be edited.',
+        });
+      }
+
+      if (!validId(req.params.id)) {
+        return res.status(400).json({
+          message: 'Invalid record ID.',
+        });
+      }
+
+      const { value, errors } = validateSection(
+        section,
+        req.body
+      );
+
+      if (Object.keys(errors).length > 0) {
+        return res.status(400).json({
+          message: 'Check the form details.',
+          errors,
+        });
+      }
+
+      const record = await model.update(
+        section,
+        Number(req.params.id),
+        value
+      );
+
+      return res.json({ record });
+    },
+        deactivate: async (req, res) => {
+      if (!['templates', 'checklists'].includes(section)) {
+        return res.status(400).json({
+          message: 'This record cannot be deactivated.',
+        });
+      }
+
+      if (!validId(req.params.id)) {
+        return res.status(400).json({
+          message: 'Invalid record ID.',
+        });
+      }
+
+      const record = await model.deactivate(
+        section,
+        Number(req.params.id)
+      );
+
+      return res.json({
+        message: 'Record deactivated successfully.',
+        record,
+      });
+    },
   };
 };

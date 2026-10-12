@@ -1,16 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   createTaskSection,
+  updateTaskSection,
   getHandoverOptions,
   getTaskOptions,
 } from '../../services/taskApi';
 import { taskSections } from './taskSections';
 
-export default function TaskSectionModal({ section, onClose, onSaved }) {
-  const config = taskSections[section];
-  const dialogRef = useRef(null);
-  const savingRef = useRef(false);
-  const [values, setValues] = useState(() => Object.fromEntries(config.fields.map((field) => [field.name, field.initial || ''])));
+export default function TaskSectionModal({ section, record = null, onClose, onSaved }) {
+    const config = taskSections[section];
+    const dialogRef = useRef(null);
+    const savingRef = useRef(false);
+    const [values, setValues] = useState(() =>
+  Object.fromEntries(
+    config.fields.map((field) => [
+      field.name,
+      record?.[field.name] == null
+        ? (field.initial ?? '')
+        : String(record[field.name]),
+    ])
+  )
+);
   const [options, setOptions] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -66,8 +76,11 @@ export default function TaskSectionModal({ section, onClose, onSaved }) {
     setSaving(true);
     setError('');
     try {
-      const { record } = await createTaskSection(section, body);
-      onSaved(record);
+     const result = record
+  ? await updateTaskSection(section, record[config.id], body)
+  : await createTaskSection(section, body);
+
+onSaved(result.record);
     } catch (err) {
       setError(err.errors ? Object.values(err.errors).join(' ') : err.message);
     } finally {

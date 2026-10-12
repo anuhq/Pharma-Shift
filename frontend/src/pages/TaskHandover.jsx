@@ -122,9 +122,10 @@ function TaskHandover() {
 
   function handleSaved(task) {
     setTaskRecords((records) => [task, ...records].sort((a, b) =>
-      b.assigned_date.localeCompare(a.assigned_date) || b.assignment_id - a.assignment_id));
+      b.assignment_id - a.assignment_id));
     setSuccess('Task "' + task.title + '" saved successfully.');
     setShowTaskModal(false);
+    refreshTasks();
   }
 
   return (

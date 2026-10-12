@@ -27,7 +27,7 @@ const definitions = {
       e.full_name AS employee_name, s.shift_name FROM shift_handover r
       JOIN employee e ON e.employee_id = r.employee_id
       JOIN shift_type s ON s.shift_type_id = r.to_shift_type_id`,
-    order: 'r.handover_date DESC, r.handover_id DESC',
+    order: 'r.handover_id DESC',
   },
 };
 
@@ -65,7 +65,151 @@ async function create(section, value) {
     throw error;
   } finally {
     connection.release();
+   }}
+
+module.exports = { list, find, create, update, deactivate };
+
+async function deactivate(section, id) {
+  if (!['templates', 'checklists'].includes(section)) {
+    throw Object.assign(new Error('This record cannot be deactivated.'), { status: 400 });
+  }
+
+  const definition = definitions[section];
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [existing] = await connection.execute(
+  `SELECT status FROM ${definition.table}
+   WHERE ${definition.id} = ? FOR UPDATE`,
+  [id],
+);
+    if (!existing.length) {
+      throw Object.assign(new Error('Record not found.'), { status: 404 });
+    }
+        // Do not deactivate an already inactive record.
+    if (existing[0].status !== 'Active') {
+      throw Object.assign(
+        new Error('This record is already inactive.'),
+        { status: 400 }
+      );
+    }
+
+    // Protect checklists used by active templates.
+    if (section === 'checklists') {
+      const [linked] = await connection.execute(
+        `SELECT template_id FROM task_template
+         WHERE checklist_id = ? AND status = 'Active'
+         LIMIT 1 FOR UPDATE`,
+        [id]
+      );
+
+      if (linked.length > 0) {
+        throw Object.assign(
+          new Error(
+            'Cannot deactivate this checklist because an active task template uses it.'
+          ),
+          { status: 400 }
+        );
+      }
+    }
+
+    // Protect templates with unfinished assignments.
+    if (section === 'templates') {
+      const [unfinished] = await connection.execute(
+        `SELECT assignment_id FROM task_assignment
+         WHERE template_id = ? AND status <> 'Completed'
+         LIMIT 1 FOR UPDATE`,
+        [id]
+      );
+
+      if (unfinished.length > 0) {
+        throw Object.assign(
+          new Error(
+            'Cannot deactivate this template because it has unfinished task assignments.'
+          ),
+          { status: 400 }
+        );
+      }
+    }
+    await connection.execute(
+      `UPDATE ${definition.table} SET status = 'Inactive' WHERE ${definition.id} = ?`,
+      [id],
+    );
+    const record = await find(section, id, connection);
+    await connection.commit();
+    return record;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
 }
 
-module.exports = { list, find, create };
+ async function update(section, id, value) {
+  if (!['templates', 'checklists'].includes(section)) {
+    throw Object.assign(
+      new Error('This record cannot be edited.'),
+      { status: 400 }
+    );
+  }
+
+  const definition = definitions[section];
+  const fields = definition.fields.filter(
+    (field) => field !== 'status'
+  );
+
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [existing] = await connection.execute(
+      `SELECT ${definition.id} FROM ${definition.table}
+       WHERE ${definition.id} = ? FOR UPDATE`,
+      [id]
+    );
+
+    if (!existing.length) {
+      throw Object.assign(
+        new Error('Record not found.'),
+        { status: 404 }
+      );
+    }
+
+    for (const [field, table, column = field] of definition.references) {
+      if (value[field] === null) continue;
+
+      const [rows] = await connection.execute(
+        `SELECT ${column} FROM ${table}
+         WHERE ${column} = ? AND status = 'Active' FOR UPDATE`,
+        [value[field]]
+      );
+
+      if (!rows.length) {
+        throw Object.assign(
+          new Error('Selected shift or checklist is no longer active.'),
+          { status: 400 }
+        );
+      }
+    }
+
+    await connection.execute(
+      `UPDATE ${definition.table}
+       SET ${fields.map((field) => `${field} = ?`).join(', ')}
+       WHERE ${definition.id} = ?`,
+      [...fields.map((field) => value[field]), id]
+    );
+
+    const record = await find(section, id, connection);
+
+    await connection.commit();
+    return record;
+
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}

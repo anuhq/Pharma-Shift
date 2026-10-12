@@ -1,4 +1,4 @@
-function validateTask(body) {
+function validateTask(body, now = new Date()) {
   const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
   const errors = {};
   const id = (value) => Number.isInteger(value) && value > 0 && value <= 2147483647;
@@ -24,6 +24,8 @@ function validateTask(body) {
   ) {
     errors.assigned_date =
       'Enter a valid date between 2020 and 2100.';
+  } else if (date < new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(now)) {
+    errors.assigned_date = 'Task date cannot be before today. Select today or a future date.';
   }
   const due_time = input.due_time === '' || input.due_time == null ? null : input.due_time;
   if (due_time !== null && (typeof due_time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(due_time))) errors.due_time = 'Enter a valid time (HH:mm).';
