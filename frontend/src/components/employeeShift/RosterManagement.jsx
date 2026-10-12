@@ -30,10 +30,37 @@ export default function RosterManagement() {
   const [shiftTypes, setShiftTypes] = useState([]);
   const [form, setForm] = useState({ ...emptyForm });
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState('All');
+
+    // Use the user's local calendar date
+  const now = new Date();
+
+  const todayDate = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+
+  function canEditOrCancel(roster) {
+    return (
+      roster.status === 'Scheduled' &&
+      roster.shift_date.slice(0, 10) >= todayDate
+    );
+  }
+
+  function canDeleteRoster(roster) {
+    return (
+      ['Scheduled', 'Cancelled'].includes(roster.status) &&
+      roster.shift_date.slice(0, 10) > todayDate
+    );
+  }
 
   useEffect(() => {
     async function loadRosterData() {
@@ -62,15 +89,128 @@ export default function RosterManagement() {
     setForm((current) => ({ ...current, [name]: value }));
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  function openEditForm(roster) {
+  if (saving || !canEditOrCancel(roster)) return;
+
+  setForm({
+    employee_id: String(roster.employee_id),
+    shift_type_id: String(roster.shift_type_id),
+    shift_date: roster.shift_date.slice(0, 10),
+  });
+
+  setEditingId(roster.roster_id);
+  setError('');
+  setSuccess('');
+  setShowForm(true);
+}
+
+  // Cancel a scheduled roster without removing its history
+  async function handleCancel(roster) {
+    if (saving || !canEditOrCancel(roster)) return;
+
+    const confirmed = window.confirm(
+      `Cancel the shift assignment for "${roster.full_name}" ` +
+      `on ${roster.shift_date.slice(0, 10)}?`
+    );
+
+    if (!confirmed) return;
+
     setSaving(true);
     setError('');
     setSuccess('');
 
     try {
-      const newRoster = await request('/roster', {
-        method: 'POST',
+      const updatedRoster = await request(
+        `/roster/${roster.roster_id}/cancel`,
+        { method: 'PATCH' }
+      );
+
+      setRosters((current) =>
+        current.map((item) =>
+          item.roster_id === roster.roster_id
+            ? updatedRoster
+            : item
+        )
+      );
+
+      if (editingId === roster.roster_id) {
+        setEditingId(null);
+        setShowForm(false);
+      }
+
+      setSuccess('Shift assignment cancelled successfully.');
+    } catch (cancelError) {
+      setError(cancelError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Permanently delete an eligible future roster
+  async function handleDelete(roster) {
+    if (saving) return;
+
+        if (!canDeleteRoster(roster)) {
+      setError(
+        'Only future Scheduled or Cancelled assignments can be deleted.'
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Permanently delete the shift assignment for ` +
+      `"${roster.full_name}" on ${roster.shift_date.slice(0, 10)}? ` +
+      'This action cannot be undone. Historical assignments are protected.'
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const result = await request(
+        `/roster/${roster.roster_id}`,
+        { method: 'DELETE' }
+      );
+
+      setRosters((current) =>
+        current.filter(
+          (item) => item.roster_id !== roster.roster_id
+        )
+      );
+
+      if (editingId === roster.roster_id) {
+        setEditingId(null);
+        setShowForm(false);
+      }
+
+      setSuccess(
+        result.message || 'Roster assignment deleted successfully.'
+      );
+    } catch (deleteError) {
+      setError(deleteError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSubmit(event) {
+  event.preventDefault();
+  if (saving) return;
+
+  setSaving(true);
+  setError('');
+  setSuccess('');
+
+  const isEditing = editingId !== null;
+
+  try {
+    const savedRoster = await request(
+      isEditing ? `/roster/${editingId}` : '/roster',
+      {
+        method: isEditing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -78,20 +218,54 @@ export default function RosterManagement() {
           employee_id: Number(form.employee_id),
           shift_type_id: Number(form.shift_type_id),
           shift_date: form.shift_date,
-          status: 'Scheduled',
+          ...(!isEditing ? { status: 'Scheduled' } : {}),
         }),
-      });
+      }
+    );
 
-      setRosters((current) => [newRoster, ...current]);
-      setForm({ ...emptyForm });
-      setShowForm(false);
-      setSuccess('Shift assigned successfully.');
-    } catch (saveError) {
-      setError(saveError.message);
-    } finally {
-      setSaving(false);
-    }
+    setRosters((current) =>
+      isEditing
+        ? current.map((roster) =>
+            roster.roster_id === editingId ? savedRoster : roster
+          )
+        : [savedRoster, ...current]
+    );
+
+    setForm({ ...emptyForm });
+    setEditingId(null);
+    setShowForm(false);
+
+    setSuccess(
+      isEditing
+        ? 'Shift assignment updated successfully.'
+        : 'Shift assigned successfully.'
+    );
+  } catch (saveError) {
+    setError(saveError.message);
+  } finally {
+    setSaving(false);
   }
+}
+
+  // Filter roster assignments without changing database records
+  const filteredRosters = rosters.filter((roster) => {
+    const search = searchTerm.trim().toLowerCase();
+
+    const matchesSearch =
+      !search ||
+      roster.full_name.toLowerCase().includes(search) ||
+      roster.shift_name.toLowerCase().includes(search);
+
+    const matchesDate =
+      !filterDate ||
+      roster.shift_date.slice(0, 10) === filterDate;
+
+    const matchesStatus =
+      filterStatus === 'All' ||
+      roster.status === filterStatus;
+
+    return matchesSearch && matchesDate && matchesStatus;
+  });
 
   return (
     <section>
@@ -109,6 +283,8 @@ export default function RosterManagement() {
           onClick={() => {
             setError('');
             setSuccess('');
+            setForm({ ...emptyForm });
+            setEditingId(null);
             setShowForm(true);
           }}
           disabled={loading || saving}
@@ -132,7 +308,7 @@ export default function RosterManagement() {
       {showForm && (
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-body">
-            <h4 className="h5">Assign Employee to Shift</h4>
+            <h4 className="h5">{editingId === null ? 'Assign Employee to Shift' : 'Edit Shift Assignment'}</h4>
 
             <form onSubmit={handleSubmit}>
               <div className="row g-3">
@@ -149,7 +325,7 @@ export default function RosterManagement() {
                     required
                   >
                     <option value="">Select employee</option>
-                    {employees.map((employee) => (
+                    {employees.filter((employee) => employee.status === 'Active').map((employee) => (
                       <option
                         key={employee.employee_id}
                         value={employee.employee_id}
@@ -173,7 +349,7 @@ export default function RosterManagement() {
                     required
                   >
                     <option value="">Select shift</option>
-                    {shiftTypes.map((shiftType) => (
+                    {shiftTypes.filter((shiftType) => shiftType.status === 'Active').map((shiftType) => (
                       <option
                         key={shiftType.shift_type_id}
                         value={shiftType.shift_type_id}
@@ -223,6 +399,79 @@ export default function RosterManagement() {
         </div>
       )}
 
+            {/* Search and filter roster assignments */}
+      <div className="card border-0 shadow-sm mb-3">
+        <div className="card-body">
+          <div className="row g-3 align-items-end">
+
+            <div className="col-md-4">
+              <label htmlFor="roster-search" className="form-label">
+                Search employee or shift
+              </label>
+              <input
+                id="roster-search"
+                type="search"
+                className="form-control"
+                placeholder="Enter employee or shift name"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+            </div>
+
+            <div className="col-md-3">
+              <label htmlFor="filter-roster-date" className="form-label">
+                Filter by date
+              </label>
+              <input
+                id="filter-roster-date"
+                type="date"
+                className="form-control"
+                value={filterDate}
+                onChange={(event) => setFilterDate(event.target.value)}
+              />
+            </div>
+
+            <div className="col-md-3">
+              <label htmlFor="filter-roster-status" className="form-label">
+                Filter by status
+              </label>
+              <select
+                id="filter-roster-status"
+                className="form-select"
+                value={filterStatus}
+                onChange={(event) => setFilterStatus(event.target.value)}
+              >
+                <option value="All">All statuses</option>
+                <option value="Scheduled">Scheduled</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            <div className="col-md-2">
+              <button
+                type="button"
+                className="btn btn-outline-secondary w-100"
+                onClick={() => {
+                  setSearchTerm('');
+                  setFilterDate('');
+                  setFilterStatus('All');
+                }}
+              >
+                Clear Filters
+              </button>
+            </div>
+
+          </div>
+
+          {!loading && (
+            <p className="text-muted small mt-3 mb-0">
+              Showing {filteredRosters.length} of {rosters.length} assignments
+            </p>
+          )}
+        </div>
+      </div>
+
       {loading ? (
         <p>Loading roster…</p>
       ) : (
@@ -237,11 +486,12 @@ export default function RosterManagement() {
                     <th>Time</th>
                     <th>Date</th>
                     <th>Status</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {rosters.map((roster) => (
+                  {filteredRosters.map((roster) => (
                     <tr key={roster.roster_id}>
                       <td>{roster.full_name}</td>
                       <td>{roster.shift_name}</td>
@@ -250,18 +500,60 @@ export default function RosterManagement() {
                         {roster.end_time.slice(0, 5)}
                       </td>
                       <td>{roster.shift_date.slice(0, 10)}</td>
-                      <td>
-                        <span className="badge text-bg-success">
+                     <td>
+                        <span
+                          className={`badge ${
+                            roster.status === 'Scheduled'
+                              ? 'text-bg-primary'
+                              : roster.status === 'Completed'
+                                ? 'text-bg-success'
+                                : 'text-bg-secondary'
+                          }`}
+                        >
                           {roster.status}
                         </span>
+                      </td>
+
+                      <td>
+                        <div className="d-flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => openEditForm(roster)}
+                             disabled={saving || !canEditOrCancel(roster)}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-warning"
+                            onClick={() => handleCancel(roster)}
+                           disabled={saving || !canEditOrCancel(roster)}
+                          >
+                            Cancel
+                          </button>
+
+                          <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => handleDelete(roster)}
+                              disabled={saving || !canDeleteRoster(roster)}
+                              aria-label={`Delete assignment for ${roster.full_name}`}
+                            >
+                              Delete
+                            </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
 
-                  {rosters.length === 0 && (
+                  {filteredRosters.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-center py-4">
-                        No roster assignments found.
+                      <td colSpan={6} className="text-center py-4">
+                        {rosters.length === 0
+                          ? 'No roster assignments found.'
+                          : 'No roster assignments match your filters.'}
                       </td>
                     </tr>
                   )}
