@@ -158,12 +158,18 @@ export function MyAssignedShifts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Search and filter values
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState('All');
+
   useEffect(() => {
     let cancelled = false;
 
     async function loadMyShifts() {
       try {
-        // The backend gets the employee ID from the login session
+        // Employee ID comes from the logged-in session.
+        // Staff cannot choose another employee here.
         const data = await request('/roster/me');
 
         if (!cancelled) {
@@ -187,15 +193,51 @@ export function MyAssignedShifts() {
     };
   }, []);
 
+  // Filter only the assignments returned for this employee.
+  const filteredAssignments = assignments.filter((assignment) => {
+    const matchesSearch = String(
+      assignment.shift_name ?? ''
+    )
+      .toLowerCase()
+      .includes(searchTerm.trim().toLowerCase());
+
+    const matchesDate =
+      !filterDate ||
+      String(assignment.shift_date).slice(0, 10) === filterDate;
+
+    const matchesStatus =
+      filterStatus === 'All' ||
+      assignment.status === filterStatus;
+
+    return matchesSearch && matchesDate && matchesStatus;
+  });
+
+  // Display different colours for different statuses.
+  function statusBadgeClass(status) {
+    if (status === 'Scheduled') {
+      return 'text-bg-primary';
+    }
+
+    if (status === 'Completed') {
+      return 'text-bg-success';
+    }
+
+    return 'text-bg-secondary';
+  }
+
   return (
     <section className="card border-0 shadow-sm">
       <div className="card-body">
-        <h2 className="h4">My Assigned Shifts</h2>
+
+        <h2 className="h4 mb-2">My Assigned Shifts</h2>
+
         <p className="text-muted">
-          View your scheduled shifts.
+          View your work schedule and check your assigned shifts.
         </p>
 
-        {loading && <p role="status">Loading your shifts…</p>}
+        {loading && (
+          <p role="status">Loading your shifts...</p>
+        )}
 
         {error && (
           <div className="alert alert-danger" role="alert">
@@ -203,39 +245,160 @@ export function MyAssignedShifts() {
           </div>
         )}
 
-        {!loading && !error && (
-          assignments.length === 0 ? (
-            <div className="alert alert-info">
-              No shifts are assigned to you.
+        {!loading && !error && assignments.length === 0 && (
+          <div className="alert alert-info">
+            No shifts are currently assigned to you.
+          </div>
+        )}
+
+        {!loading && !error && assignments.length > 0 && (
+          <>
+            {/* Search and filters */}
+            <div className="row g-3 mb-3">
+
+              <div className="col-md-4">
+                <label
+                  htmlFor="my-shift-search"
+                  className="form-label"
+                >
+                  Search shifts
+                </label>
+
+                <input
+                  id="my-shift-search"
+                  type="search"
+                  className="form-control"
+                  placeholder="Enter shift name"
+                  value={searchTerm}
+                  onChange={(event) =>
+                    setSearchTerm(event.target.value)
+                  }
+                />
+              </div>
+
+              <div className="col-md-3">
+                <label
+                  htmlFor="my-shift-date"
+                  className="form-label"
+                >
+                  Filter by date
+                </label>
+
+                <input
+                  id="my-shift-date"
+                  type="date"
+                  className="form-control"
+                  value={filterDate}
+                  onChange={(event) =>
+                    setFilterDate(event.target.value)
+                  }
+                />
+              </div>
+
+              <div className="col-md-3">
+                <label
+                  htmlFor="my-shift-status"
+                  className="form-label"
+                >
+                  Filter by status
+                </label>
+
+                <select
+                  id="my-shift-status"
+                  className="form-select"
+                  value={filterStatus}
+                  onChange={(event) =>
+                    setFilterStatus(event.target.value)
+                  }
+                >
+                  <option value="All">All statuses</option>
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              <div className="col-md-2 d-flex align-items-end">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary w-100"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setFilterDate('');
+                    setFilterStatus('All');
+                  }}
+                >
+                  Clear Filters
+                </button>
+              </div>
+
             </div>
-          ) : (
+
+            <p className="text-muted small">
+              Showing {filteredAssignments.length} of{' '}
+              {assignments.length} assigned shifts
+            </p>
+
+            {/* Assigned shifts table */}
             <div className="table-responsive">
-              <table className="table align-middle mb-0">
+              <table className="table table-hover align-middle">
                 <thead>
                   <tr>
-                    <th>Shift</th>
-                    <th>Time</th>
-                    <th>Date</th>
+                    <th>Shift Name</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Shift Date</th>
                     <th>Status</th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {assignments.map((assignment) => (
+                  {filteredAssignments.map((assignment) => (
                     <tr key={assignment.roster_id}>
+
                       <td>{assignment.shift_name}</td>
+
                       <td>
-                        {assignment.start_time.slice(0, 5)}–
-                        {assignment.end_time.slice(0, 5)}
+                        {String(assignment.start_time).slice(0, 5)}
                       </td>
-                      <td>{assignment.shift_date}</td>
-                      <td>{assignment.status}</td>
+
+                      <td>
+                        {String(assignment.end_time).slice(0, 5)}
+                      </td>
+
+                      <td>
+                        {String(assignment.shift_date).slice(0, 10)}
+                      </td>
+
+                      <td>
+                        <span
+                          className={`badge ${statusBadgeClass(
+                            assignment.status
+                          )}`}
+                        >
+                          {assignment.status}
+                        </span>
+                      </td>
+
                     </tr>
                   ))}
+
+                  {filteredAssignments.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="text-center text-muted py-4"
+                      >
+                        No assigned shifts match your filters.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
-          )
+          </>
         )}
+
       </div>
     </section>
   );
