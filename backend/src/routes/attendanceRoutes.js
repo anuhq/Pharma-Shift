@@ -1,4 +1,6 @@
+
 const express = require('express');
+
 const {
   requireAuth,
   requireRole,
@@ -10,10 +12,13 @@ const {
   createCheckIn,
   createCheckOut,
   correctAttendance,
+  deleteAttendance,
 } = require('../models/attendanceModel');
 
 const router = express.Router();
+
 const managementRoles = new Set(['Owner/Manager']);
+
 function normalizeTime(value) {
   if (typeof value !== 'string') {
     return null;
@@ -29,12 +34,17 @@ function normalizeTime(value) {
   return time.length === 5 ? `${time}:00` : time;
 }
 
+// READ - Manager sees all attendance records.
+// Other employees see only their own records.
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    // Managers see all records. Staff only see their own records.
-    const records = managementRoles.has(req.currentUser.role_name)
+    const records = managementRoles.has(
+      req.currentUser.role_name
+    )
       ? await getAllAttendance()
-      : await getAttendanceForEmployee(req.currentUser.employee_id);
+      : await getAttendanceForEmployee(
+          req.currentUser.employee_id
+        );
 
     return res.status(200).json({ records });
   } catch (error) {
@@ -42,64 +52,99 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/check-in', requireAuth, async (req, res, next) => {
-  try {
-    // The employee ID comes from the signed-in session.
-    const record = await createCheckIn(req.currentUser.employee_id);
+// CREATE - Record the signed-in employee's check-in.
+router.post(
+  '/check-in',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      // Never accept employee ID from the request body.
+      const record = await createCheckIn(
+        req.currentUser.employee_id
+      );
 
-    return res.status(201).json({
-      message: 'Check-in recorded successfully.',
-      record,
-    });
-  } catch (error) {
-    if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({
-        message: 'Attendance has already been recorded for today.',
+      return res.status(201).json({
+        message: 'Check-in recorded successfully.',
+        record,
       });
-    }
+    } catch (error) {
+      // Prevent a second active attendance session.
+      if (error.code === 'ATTENDANCE_ALREADY_CHECKED_IN') {
+        return res.status(409).json({
+          message:
+            'You are already checked in. Please check out before checking in again.',
+        });
+      }
 
-    return next(error);
+      // Keep protection against two records on the same date.
+      if (error.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({
+          message:
+            'Attendance has already been recorded for today.',
+        });
+      }
+
+      return next(error);
+    }
   }
-});
+);
 
-router.post('/check-out', requireAuth, async (req, res, next) => {
-  try {
-    // Check out only the employee stored in the signed-in session.
-    const record = await createCheckOut(req.currentUser.employee_id);
+// UPDATE - Record the signed-in employee's check-out.
+router.post(
+  '/check-out',
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const record = await createCheckOut(
+        req.currentUser.employee_id
+      );
 
-    return res.status(200).json({
-      message: 'Check-out recorded successfully.',
-      record,
-    });
-  } catch (error) {
-    if (error.code === 'ATTENDANCE_NOT_FOUND') {
-      return res.status(404).json({
-        message: 'Check-in is required before check-out.',
+      return res.status(200).json({
+        message: 'Check-out recorded successfully.',
+        record,
       });
-    }
+    } catch (error) {
+      if (error.code === 'ATTENDANCE_NOT_FOUND') {
+        return res.status(404).json({
+          message:
+            'Check-in is required before check-out.',
+        });
+      }
 
-    if (error.code === 'ATTENDANCE_ALREADY_COMPLETED') {
-      return res.status(409).json({
-        message: 'Check-out has already been recorded.',
-      });
-    }
+      if (
+        error.code === 'ATTENDANCE_ALREADY_COMPLETED'
+      ) {
+        return res.status(409).json({
+          message:
+            'Check-out has already been recorded.',
+        });
+      }
 
-    return next(error);
+      return next(error);
+    }
   }
-});
+);
 
+// UPDATE - Only Owner/Manager can correct attendance.
 router.patch(
   '/:attendanceId',
   requireAuth,
   requireRole('Owner/Manager'),
   async (req, res, next) => {
     try {
-      const attendanceId = Number(req.params.attendanceId);
-      const checkInTime = normalizeTime(req.body?.checkInTime);
+      const attendanceId = Number(
+        req.params.attendanceId
+      );
+
+      const checkInTime = normalizeTime(
+        req.body?.checkInTime
+      );
 
       const rawCheckOutTime = req.body?.checkOutTime;
+
       const checkOutTime =
-        rawCheckOutTime === null || rawCheckOutTime === ''
+        rawCheckOutTime === null ||
+        rawCheckOutTime === ''
           ? null
           : normalizeTime(rawCheckOutTime);
 
@@ -119,13 +164,20 @@ router.patch(
         correctionNote.length > 255
       ) {
         return res.status(400).json({
-          message: 'Valid times and a correction note are required.',
+          message:
+            'Valid times and a correction note are required.',
         });
       }
 
-      if (checkOutTime && checkOutTime <= checkInTime) {
+      // Keep the existing same-day correction validation.
+      // Overnight corrections will be handled separately.
+      if (
+        checkOutTime &&
+        checkOutTime <= checkInTime
+      ) {
         return res.status(400).json({
-          message: 'Check-out time must be later than check-in time.',
+          message:
+            'Check-out time must be later than check-in time.',
         });
       }
 
@@ -138,15 +190,80 @@ router.patch(
 
       if (!record) {
         return res.status(404).json({
-          message: 'Attendance record was not found.',
+          message:
+            'Attendance record was not found.',
         });
       }
 
       return res.status(200).json({
-        message: 'Attendance corrected successfully.',
+        message:
+          'Attendance corrected successfully.',
         record,
       });
     } catch (error) {
+      return next(error);
+    }
+  }
+);
+
+// DELETE - Only Owner/Manager can permanently delete
+// an incorrectly created attendance record.
+router.delete(
+  '/:attendanceId',
+  requireAuth,
+  requireRole('Owner/Manager'),
+  async (req, res, next) => {
+    try {
+      const rawAttendanceId =
+        req.params.attendanceId;
+
+      if (!/^[1-9]\d*$/.test(rawAttendanceId)) {
+        return res.status(400).json({
+          message:
+            'Invalid attendance record ID.',
+        });
+      }
+
+      const attendanceId = Number(
+        rawAttendanceId
+      );
+
+      if (
+        !Number.isSafeInteger(attendanceId) ||
+        attendanceId > 2147483647
+      ) {
+        return res.status(400).json({
+          message:
+            'Invalid attendance record ID.',
+        });
+      }
+
+      const deleted = await deleteAttendance(
+        attendanceId
+      );
+
+      if (!deleted) {
+        return res.status(404).json({
+          message:
+            'Attendance record was not found.',
+        });
+      }
+
+      return res.status(200).json({
+        message:
+          'Attendance record deleted successfully.',
+      });
+    } catch (error) {
+      if (
+        error.code === 'ER_ROW_IS_REFERENCED' ||
+        error.code === 'ER_ROW_IS_REFERENCED_2'
+      ) {
+        return res.status(409).json({
+          message:
+            'This attendance record cannot be deleted because another record references it.',
+        });
+      }
+
       return next(error);
     }
   }
