@@ -154,6 +154,493 @@ router.get('/employee/:employeeId', async (req, res) => {
   }
 });
 
+// Suggest eligible employees to replace an existing roster assignment
+router.get('/:id/replacements', async (req, res) => {
+  const rosterId = Number(req.params.id);
+
+  if (
+    !/^[1-9]\d*$/.test(req.params.id) ||
+    !Number.isSafeInteger(rosterId) ||
+    rosterId > 2147483647
+  ) {
+    return res.status(400).json({
+      message: 'Roster ID must be a valid positive integer.',
+    });
+  }
+
+  try {
+    // Find the original assignment and required employee role
+    const [rosters] = await pool.query(
+      `
+        SELECT
+          r.roster_id,
+          r.employee_id,
+          e.role_id,
+          r.shift_type_id,
+          DATE_FORMAT(r.shift_date, '%Y-%m-%d') AS shift_date,
+          r.status,
+          s.status AS shift_type_status,
+          (r.shift_date < CURDATE()) AS is_past
+        FROM shift_roster r
+        INNER JOIN employee e
+          ON e.employee_id = r.employee_id
+        INNER JOIN shift_type s
+          ON s.shift_type_id = r.shift_type_id
+        WHERE r.roster_id = ?
+      `,
+      [rosterId]
+    );
+
+    if (rosters.length === 0) {
+      return res.status(404).json({
+        message: 'Roster assignment not found.',
+      });
+    }
+
+    const original = rosters[0];
+
+    if (
+      original.status !== 'Scheduled' ||
+      Number(original.is_past) === 1
+    ) {
+      return res.status(409).json({
+        message:
+          'Replacement suggestions are available only for current or future Scheduled assignments.',
+      });
+    }
+
+    if (original.shift_type_status !== 'Active') {
+      return res.status(409).json({
+        message:
+          'The assigned shift type must be Active before selecting a replacement.',
+      });
+    }
+
+    const shiftDate = original.shift_date;
+
+    // Find active employees with the same role.
+    // Exclude overlapping shifts and Approved leave.
+    const [candidates] = await pool.query(
+      `
+        SELECT
+          candidate.employee_id,
+          candidate.full_name,
+          candidate.role_id,
+          role_info.role_name
+        FROM employee candidate
+        INNER JOIN \`role\` role_info
+          ON role_info.role_id = candidate.role_id
+        INNER JOIN shift_type target_shift
+          ON target_shift.shift_type_id = ?
+        WHERE candidate.role_id = ?
+          AND candidate.employee_id <> ?
+          AND candidate.status = 'Active'
+
+          -- Exclude employees with overlapping roster assignments
+          AND NOT EXISTS (
+            SELECT 1
+            FROM shift_roster existing
+            INNER JOIN shift_type existing_shift
+              ON existing_shift.shift_type_id = existing.shift_type_id
+            WHERE existing.employee_id = candidate.employee_id
+              AND existing.status <> 'Cancelled'
+
+              AND existing.shift_date BETWEEN
+                DATE_SUB(?, INTERVAL 1 DAY)
+                AND DATE_ADD(?, INTERVAL 1 DAY)
+
+              AND TIMESTAMP(
+                    existing.shift_date,
+                    existing_shift.start_time
+                  ) <
+                  DATE_ADD(
+                    TIMESTAMP(?, target_shift.end_time),
+                    INTERVAL IF(
+                      target_shift.end_time < target_shift.start_time,
+                      1,
+                      0
+                    ) DAY
+                  )
+
+              AND DATE_ADD(
+                    TIMESTAMP(
+                      existing.shift_date,
+                      existing_shift.end_time
+                    ),
+                    INTERVAL IF(
+                      existing_shift.end_time < existing_shift.start_time,
+                      1,
+                      0
+                    ) DAY
+                  ) >
+                  TIMESTAMP(?, target_shift.start_time)
+          )
+
+          -- Approved leave must not overlap any day of the shift
+          AND NOT EXISTS (
+            SELECT 1
+            FROM leave_request leave_record
+            WHERE leave_record.employee_id = candidate.employee_id
+              AND leave_record.status = 'Approved'
+              AND leave_record.start_date <=
+                DATE_ADD(
+                  ?,
+                  INTERVAL IF(
+                    target_shift.end_time < target_shift.start_time,
+                    1,
+                    0
+                  ) DAY
+                )
+              AND leave_record.end_date >= ?
+          )
+
+        ORDER BY candidate.full_name, candidate.employee_id
+      `,
+      [
+        original.shift_type_id,
+        original.role_id,
+        original.employee_id,
+        shiftDate,
+        shiftDate,
+        shiftDate,
+        shiftDate,
+        shiftDate,
+        shiftDate,
+      ]
+    );
+
+    return res.status(200).json({
+      roster_id: original.roster_id,
+      shift_date: shiftDate,
+      candidates,
+    });
+
+  } catch (error) {
+    console.error('Replacement suggestions error:', error.code);
+
+    return res.status(500).json({
+      message: 'Unable to retrieve replacement suggestions.',
+    });
+  }
+});
+
+// Confirm a replacement while preserving the original assignment
+router.post('/:id/replace', async (req, res) => {
+  const rosterId = Number(req.params.id);
+  const candidateValue = req.body?.replacement_employee_id;
+  const candidateId = Number(candidateValue);
+
+  if (
+    !/^[1-9]\d*$/.test(req.params.id) ||
+    !Number.isSafeInteger(rosterId) ||
+    rosterId > 2147483647
+  ) {
+    return res.status(400).json({
+      message: 'Roster ID must be a valid positive integer.',
+    });
+  }
+
+  if (
+    !/^[1-9]\d*$/.test(String(candidateValue)) ||
+    !Number.isSafeInteger(candidateId) ||
+    candidateId > 2147483647
+  ) {
+    return res.status(400).json({
+      message: 'Select a valid replacement employee.',
+    });
+  }
+
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // Lock the original assignment so it cannot be replaced twice.
+    const [originalRows] = await connection.query(
+      `
+        SELECT
+          r.roster_id,
+          r.employee_id,
+          e.role_id,
+          r.shift_type_id,
+          DATE_FORMAT(r.shift_date, '%Y-%m-%d') AS shift_date,
+          r.status,
+          (r.shift_date < CURDATE()) AS is_past
+        FROM shift_roster r
+        INNER JOIN employee e
+          ON e.employee_id = r.employee_id
+        WHERE r.roster_id = ?
+        FOR UPDATE
+      `,
+      [rosterId]
+    );
+
+    if (originalRows.length === 0) {
+      await connection.rollback();
+
+      return res.status(404).json({
+        message: 'Roster assignment not found.',
+      });
+    }
+
+    const original = originalRows[0];
+
+    if (
+      original.status !== 'Scheduled' ||
+      Number(original.is_past) === 1
+    ) {
+      await connection.rollback();
+
+      return res.status(409).json({
+        message:
+          'Only current or future Scheduled assignments can be replaced.',
+      });
+    }
+
+    if (candidateId === Number(original.employee_id)) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        message:
+          'Select a different employee as the replacement.',
+      });
+    }
+
+    // Lock the replacement employee and shift type.
+    // Uses the same employee-locking approach as roster creation.
+    const [eligible] = await connection.query(
+      `
+        SELECT candidate.employee_id
+        FROM employee candidate
+        INNER JOIN shift_type selected_shift
+          ON selected_shift.shift_type_id = ?
+        WHERE candidate.employee_id = ?
+          AND candidate.role_id = ?
+          AND candidate.status = 'Active'
+          AND selected_shift.status = 'Active'
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [
+        original.shift_type_id,
+        candidateId,
+        original.role_id,
+      ]
+    );
+
+    if (eligible.length === 0) {
+      await connection.rollback();
+
+      return res.status(400).json({
+        message:
+          'Replacement employee must be Active and have the required role.',
+      });
+    }
+
+    const shiftDate = original.shift_date;
+
+    // Recheck overlapping shifts, including overnight shifts.
+    const [conflicts] = await connection.query(
+      `
+        SELECT existing.roster_id
+        FROM shift_roster existing
+        INNER JOIN shift_type existing_shift
+          ON existing_shift.shift_type_id =
+             existing.shift_type_id
+        INNER JOIN shift_type target_shift
+          ON target_shift.shift_type_id = ?
+        WHERE existing.employee_id = ?
+          AND existing.status <> 'Cancelled'
+          AND existing.shift_date BETWEEN
+              DATE_SUB(?, INTERVAL 1 DAY)
+              AND DATE_ADD(?, INTERVAL 1 DAY)
+
+          AND TIMESTAMP(
+                existing.shift_date,
+                existing_shift.start_time
+              ) <
+              DATE_ADD(
+                TIMESTAMP(?, target_shift.end_time),
+                INTERVAL IF(
+                  target_shift.end_time < target_shift.start_time,
+                  1,
+                  0
+                ) DAY
+              )
+
+          AND DATE_ADD(
+                TIMESTAMP(
+                  existing.shift_date,
+                  existing_shift.end_time
+                ),
+                INTERVAL IF(
+                  existing_shift.end_time < existing_shift.start_time,
+                  1,
+                  0
+                ) DAY
+              ) >
+              TIMESTAMP(?, target_shift.start_time)
+
+        LIMIT 1
+      `,
+      [
+        original.shift_type_id,
+        candidateId,
+        shiftDate,
+        shiftDate,
+        shiftDate,
+        shiftDate,
+      ]
+    );
+
+    if (conflicts.length > 0) {
+      await connection.rollback();
+
+      return res.status(409).json({
+        message:
+          'The replacement employee has an overlapping shift.',
+      });
+    }
+
+    // Check real Approved leave, including an overnight end date.
+    const [approvedLeave] = await connection.query(
+      `
+        SELECT leave_record.leave_request_id
+        FROM leave_request leave_record
+        INNER JOIN shift_type target_shift
+          ON target_shift.shift_type_id = ?
+        WHERE leave_record.employee_id = ?
+          AND leave_record.status = 'Approved'
+          AND leave_record.start_date <=
+              DATE_ADD(
+                ?,
+                INTERVAL IF(
+                  target_shift.end_time < target_shift.start_time,
+                  1,
+                  0
+                ) DAY
+              )
+          AND leave_record.end_date >= ?
+          LIMIT 1
+          FOR UPDATE
+      `,
+      [
+        original.shift_type_id,
+        candidateId,
+        shiftDate,
+        shiftDate,
+      ]
+    );
+
+    if (approvedLeave.length > 0) {
+      await connection.rollback();
+
+      return res.status(409).json({
+        message:
+          'The replacement employee has Approved leave during this shift.',
+      });
+    }
+
+    // Preserve the original assignment as Cancelled.
+    const [cancelResult] = await connection.query(
+      `
+        UPDATE shift_roster
+        SET status = 'Cancelled'
+        WHERE roster_id = ?
+          AND status = 'Scheduled'
+      `,
+      [rosterId]
+    );
+
+    if (cancelResult.affectedRows !== 1) {
+      await connection.rollback();
+
+      return res.status(409).json({
+        message:
+          'The original assignment is no longer available.',
+      });
+    }
+
+    // Create a new Scheduled assignment for the replacement.
+    const [insertResult] = await connection.query(
+      `
+        INSERT INTO shift_roster
+          (employee_id, shift_type_id, shift_date, status)
+        VALUES (?, ?, ?, 'Scheduled')
+      `,
+      [
+        candidateId,
+        original.shift_type_id,
+        shiftDate,
+      ]
+    );
+
+    const [newAssignments] = await connection.query(
+      `
+        SELECT
+          r.roster_id,
+          r.employee_id,
+          e.full_name,
+          r.shift_type_id,
+          s.shift_name,
+          s.start_time,
+          s.end_time,
+          DATE_FORMAT(r.shift_date, '%Y-%m-%d') AS shift_date,
+          r.status
+        FROM shift_roster r
+        INNER JOIN employee e
+          ON e.employee_id = r.employee_id
+        INNER JOIN shift_type s
+          ON s.shift_type_id = r.shift_type_id
+        WHERE r.roster_id = ?
+      `,
+      [insertResult.insertId]
+    );
+
+    await connection.commit();
+
+    return res.status(201).json({
+      message: 'Replacement assigned successfully.',
+      cancelled_roster_id: rosterId,
+      replacement_roster: newAssignments[0],
+    });
+
+  } catch (error) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error(
+          'Replacement rollback error:',
+          rollbackError.code
+        );
+      }
+    }
+
+    if (
+      error.code === 'ER_LOCK_DEADLOCK' ||
+      error.code === 'ER_LOCK_WAIT_TIMEOUT'
+    ) {
+      return res.status(409).json({
+        message:
+          'Another roster change is in progress. Please try again.',
+      });
+    }
+
+    console.error('Replacement confirmation error:', error.code);
+
+    return res.status(500).json({
+      message: 'Unable to confirm the replacement.',
+    });
+
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
 // Create a roster assignment safely
 router.post('/', async (req, res) => {
   const {

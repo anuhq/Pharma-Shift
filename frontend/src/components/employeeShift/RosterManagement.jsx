@@ -38,6 +38,10 @@ export default function RosterManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
+  const [replacementRoster, setReplacementRoster] = useState(null);
+  const [replacementCandidates, setReplacementCandidates] = useState([]);
+  const [replacementLoading, setReplacementLoading] = useState(false);
+  const [replacementError, setReplacementError] = useState('');
 
     // Use the user's local calendar date
   const now = new Date();
@@ -88,6 +92,104 @@ export default function RosterManagement() {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
   }
+
+  async function handleFindReplacements(roster) {
+  if (saving || replacementLoading || !canEditOrCancel(roster)) {
+    return;
+  }
+
+  setReplacementRoster(roster);
+  setReplacementCandidates([]);
+  setReplacementError('');
+  setReplacementLoading(true);
+
+  try {
+    const data = await request(
+      `/roster/${roster.roster_id}/replacements`
+    );
+
+    setReplacementCandidates(data.candidates);
+  } catch (findError) {
+    setReplacementError(findError.message);
+  } finally {
+    setReplacementLoading(false);
+  }
+}
+
+// Confirm a suggested replacement employee
+async function handleConfirmReplacement(candidate) {
+  if (saving || replacementLoading || !replacementRoster) {
+    return;
+  }
+
+  const original = replacementRoster;
+
+  if (!canEditOrCancel(original)) {
+    setReplacementError(
+      'Only current or future Scheduled assignments can be replaced.'
+    );
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Replace "${original.full_name}" with "${candidate.full_name}" ` +
+    `for the shift on ${original.shift_date.slice(0, 10)}?\n\n` +
+    'The original assignment will be marked Cancelled, and a new ' +
+    'Scheduled assignment will be created.'
+  );
+
+  if (!confirmed) return;
+
+  setSaving(true);
+  setReplacementError('');
+  setError('');
+  setSuccess('');
+
+  try {
+    const result = await request(
+      `/roster/${original.roster_id}/replace`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          replacement_employee_id: candidate.employee_id,
+        }),
+      }
+    );
+
+    // Update the table using the actual saved MySQL result.
+    setRosters((current) => {
+      const updated = current.map((roster) =>
+        Number(roster.roster_id) ===
+        Number(result.cancelled_roster_id)
+          ? { ...roster, status: 'Cancelled' }
+          : roster
+      );
+
+      return [result.replacement_roster, ...updated];
+    });
+
+    if (editingId === original.roster_id) {
+      setEditingId(null);
+      setShowForm(false);
+    }
+
+    setReplacementRoster(null);
+    setReplacementCandidates([]);
+
+    setSuccess(
+      `Replacement assigned to ${candidate.full_name} successfully. ` +
+      'The original assignment is preserved as Cancelled.'
+    );
+
+  } catch (confirmError) {
+    setReplacementError(confirmError.message);
+  } finally {
+    setSaving(false);
+  }
+}
 
   function openEditForm(roster) {
   if (saving || !canEditOrCancel(roster)) return;
@@ -472,6 +574,93 @@ export default function RosterManagement() {
         </div>
       </div>
 
+      {replacementRoster && (
+        <div className="card border-0 shadow-sm mb-4">
+          <div className="card-body">
+
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h4 className="h5 mb-0">
+                Available Replacement Employees
+              </h4>
+
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                disabled={saving || replacementLoading}
+                onClick={() => {
+                  setReplacementRoster(null);
+                  setReplacementCandidates([]);
+                  setReplacementError('');
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="text-muted">
+              Replacements for {replacementRoster.full_name} on{' '}
+              {replacementRoster.shift_date.slice(0, 10)}
+            </p>
+
+            {replacementLoading && (
+              <p role="status">Finding available employees...</p>
+            )}
+
+            {replacementError && (
+              <div className="alert alert-danger" role="alert">
+                {replacementError}
+              </div>
+            )}
+
+            {!replacementLoading &&
+              !replacementError &&
+              replacementCandidates.length === 0 && (
+                <div className="alert alert-info">
+                  No available replacement employees found.
+                </div>
+              )}
+
+            {!replacementLoading &&
+              !replacementError &&
+              replacementCandidates.length > 0 && (
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle">
+                    <thead>
+                      <tr>
+                        <th>Employee ID</th>
+                        <th>Employee Name</th>
+                        <th>Role</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {replacementCandidates.map((candidate) => (
+                        <tr key={candidate.employee_id}>
+                          <td>{candidate.employee_id}</td>
+                          <td>{candidate.full_name}</td>
+                          <td>{candidate.role_name}</td>
+
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-success"
+                              onClick={() => handleConfirmReplacement(candidate)}
+                              disabled={saving || replacementLoading}
+                            >
+                              {saving ? 'Processing...' : 'Confirm Replacement'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+          </div>
+        </div>
+      )}
       {loading ? (
         <p>Loading roster…</p>
       ) : (
@@ -543,6 +732,18 @@ export default function RosterManagement() {
                             >
                               Delete
                             </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-success"
+                            onClick={() => handleFindReplacements(roster)}
+                            disabled={
+                              saving ||
+                              replacementLoading ||
+                              !canEditOrCancel(roster)
+                            }
+                          >
+                            Find Replacement
+                          </button>
                         </div>
                       </td>
                     </tr>
