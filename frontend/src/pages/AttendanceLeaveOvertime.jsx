@@ -1,11 +1,15 @@
+
 import { useState } from 'react';
+
+import { useAuth } from '../auth/useAuth';
+
 import ModuleSectionNav from '../components/attendance/ModuleSectionNav';
 import AttendanceRecords from '../components/attendance/AttendanceRecords';
 import LeaveRequests from '../components/attendance/LeaveRequests';
 import OvertimeRecords from '../components/attendance/OvertimeRecords';
-import ReportsPreview from '../components/attendance/ReportsPreview';
+import Reports from '../components/attendance/Reports';
 
-const sections = [
+const allSections = [
   {
     id: 'attendance',
     label: 'Attendance',
@@ -32,16 +36,32 @@ const sections = [
     label: 'Reports',
     title: 'Reports',
     description:
-      'Attendance, leave and overtime summaries will be available in a future update.',
+      'Generate attendance, leave and overtime reports using saved records.',
   },
 ];
 
 function AttendanceLeaveOvertime() {
-  const [activeSection, setActiveSection] = useState('attendance');
+  const { user } = useAuth();
 
-  const selectedSection = sections.find(
-    (section) => section.id === activeSection
+  const isManager = user?.roleName === 'Owner/Manager';
+
+  const [activeSection, setActiveSection] =
+    useState('attendance');
+
+  // This is the position for the active module's action button.
+  const [headerActionContainer, setHeaderActionContainer] =
+    useState(null);
+
+  // Only Owner/Manager can access the Reports tab.
+  const sections = allSections.filter(
+    (section) =>
+      isManager || section.id !== 'reports'
   );
+
+  const selectedSection =
+    sections.find(
+      (section) => section.id === activeSection
+    ) || sections[0];
 
   return (
     <div>
@@ -57,7 +77,7 @@ function AttendanceLeaveOvertime() {
 
       <ModuleSectionNav
         sections={sections}
-        activeSection={activeSection}
+        activeSection={selectedSection.id}
         onSectionChange={setActiveSection}
       />
 
@@ -67,49 +87,70 @@ function AttendanceLeaveOvertime() {
         aria-labelledby="attendance-module-section-title"
       >
         <div className="card-body p-4">
-          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <h3
-              id="attendance-module-section-title"
-              className="h5 mb-0"
-            >
-              {selectedSection.title}
-            </h3>
+          <div className="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-2">
+            <div className="flex-grow-1">
+              <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <h3
+                  id="attendance-module-section-title"
+                  className="h5 mb-0"
+                >
+                  {selectedSection.title}
+                </h3>
 
-            <span
-  className={`badge ${
-    activeSection === 'attendance'
-      ? 'text-bg-success'
-      : 'text-bg-secondary'
-  }`}
->
-  {activeSection === 'attendance'
-    ? 'Live data'
-    : ['leave', 'overtime'].includes(activeSection)
-      ? 'Demo data'
-      : 'Coming soon'}
-</span>
+                <span className="badge text-bg-success">
+                  Live data
+                </span>
+              </div>
+
+              <p className="mb-0">
+                {selectedSection.description}
+              </p>
+            </div>
+
+            {/* The active module renders its button here. */}
+            <div
+              ref={setHeaderActionContainer}
+              className="flex-shrink-0"
+            />
           </div>
 
-          <p className="mb-0">
-            {selectedSection.description}
-          </p>
-
-          {/* Keep changes when switching tabs. */}
-          <div hidden={activeSection !== 'attendance'}>
-            <AttendanceRecords />
+          {/* Preserve module state when switching tabs. */}
+          <div hidden={selectedSection.id !== 'attendance'}>
+            <AttendanceRecords
+              headerActionContainer={
+                selectedSection.id === 'attendance'
+                  ? headerActionContainer
+                  : null
+              }
+            />
           </div>
 
-          <div hidden={activeSection !== 'leave'}>
-            <LeaveRequests />
+          <div hidden={selectedSection.id !== 'leave'}>
+            <LeaveRequests
+              headerActionContainer={
+                selectedSection.id === 'leave'
+                  ? headerActionContainer
+                  : null
+              }
+            />
           </div>
 
-          <div hidden={activeSection !== 'overtime'}>
-            <OvertimeRecords />
+          <div hidden={selectedSection.id !== 'overtime'}>
+            <OvertimeRecords
+              headerActionContainer={
+                selectedSection.id === 'overtime'
+                  ? headerActionContainer
+                  : null
+              }
+            />
           </div>
 
-          <div hidden={activeSection !== 'reports'}>
-            <ReportsPreview />
-          </div>
+          {/* Reports remain accessible only to Owner/Manager. */}
+          {isManager && (
+            <div hidden={selectedSection.id !== 'reports'}>
+              <Reports />
+            </div>
+          )}
         </div>
       </section>
     </div>
