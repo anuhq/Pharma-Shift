@@ -2,6 +2,7 @@ const router = require('express').Router();
 
 const controller = require('../controllers/taskController');
 const sectionController = require('../controllers/taskSectionController');
+const reportController = require('../controllers/taskReportController');
 const { requireRole } = require('../middleware/authMiddleware');
 
 const managerOnly = requireRole('Owner/Manager');
@@ -33,6 +34,7 @@ router.patch('/handovers/:id/complete', handoverHandlers.completeHandover);
 
 // Manager-only assignment information and actions.
 router.get('/options', managerOnly, controller.getOptions);
+router.get('/reports/summary', managerOnly, reportController.getSummary);
 router.post('/', managerOnly, controller.createTask);
 router.patch('/:id/assignee', managerOnly, controller.updateAssignee);
 router.patch('/:id', managerOnly, controller.updateAssignment);

@@ -61,3 +61,6 @@ export const completeTaskHandover = (id) =>
   request(`/handovers/${id}/complete`, {
     method: 'PATCH',
   });
+
+export const getTaskReportSummary = (signal) =>
+  request('/reports/summary', { signal });

@@ -4,6 +4,7 @@ import TaskSectionRecords from '../components/tasks/TaskSectionRecords';
 import TaskProgressModal from '../components/tasks/TaskProgressModal';
 import EditTaskModal from '../components/tasks/EditTaskModal';
 import TaskBadge from '../components/tasks/TaskBadge';
+import TaskReports from '../components/tasks/TaskReports';
 import {
   getTasks,
   getTaskOptions,
@@ -201,11 +202,33 @@ const cancellingTaskRef = useRef(false);
           >
             {section.title}
           </button>
+
         ))}
+
+        {isManager && (
+          <button
+            type="button"
+            className={
+              activeSectionId === 'reports'
+                ? 'btn btn-primary'
+                : 'btn btn-outline-primary'
+            }
+            aria-pressed={activeSectionId === 'reports'}
+            onClick={() => setActiveSectionId('reports')}
+          >
+            Reports
+          </button>
+        )}
       </div>
 
-      {activeSectionId !== 'assignments' ? <TaskSectionRecords key={activeSectionId} section={activeSection} /> : <section
-        id="task-handover-content"
+
+
+{activeSectionId === 'reports'
+  ? (isManager ? <TaskReports /> : null)
+  : activeSectionId !== 'assignments'
+    ? <TaskSectionRecords key={activeSectionId} section={activeSection} />
+    : <section
+
         className="card border-0 shadow-sm"
         aria-labelledby="task-handover-section-title"
       >
