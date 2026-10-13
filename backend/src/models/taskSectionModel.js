@@ -257,7 +257,7 @@ async function deactivate(section, id) {
     if (section === 'templates') {
       const [unfinished] = await connection.execute(
         `SELECT assignment_id FROM task_assignment
-         WHERE template_id = ? AND status <> 'Completed'
+         WHERE template_id = ? AND status IN ('Assigned', 'In Progress')
          LIMIT 1 FOR UPDATE`,
         [id]
       );

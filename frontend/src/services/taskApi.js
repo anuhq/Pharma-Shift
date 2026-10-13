@@ -64,3 +64,10 @@ export const completeTaskHandover = (id) =>
 
 export const getTaskReportSummary = (signal) =>
   request('/reports/summary', { signal });
+
+export const transferTaskAssignment = (id, transferDetails) =>
+  request(`/${id}/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(transferDetails),
+  });

@@ -2,12 +2,15 @@
 import { useEffect, useState } from 'react';
 import { getTaskReportSummary } from '../../services/taskApi';
 
+
 const taskStatuses = [
   'Assigned',
   'In Progress',
   'Completed',
   'Cancelled',
+  'Transferred',
 ];
+
 
 const handoverStatuses = ['Open', 'Completed'];
 

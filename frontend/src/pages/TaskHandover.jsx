@@ -5,6 +5,7 @@ import TaskProgressModal from '../components/tasks/TaskProgressModal';
 import EditTaskModal from '../components/tasks/EditTaskModal';
 import TaskBadge from '../components/tasks/TaskBadge';
 import TaskReports from '../components/tasks/TaskReports';
+import TransferTaskModal from '../components/tasks/TransferTaskModal';
 import {
   getTasks,
   getTaskOptions,
@@ -53,6 +54,7 @@ function TaskHandover() {
   const [reload, setReload] = useState(0);
   const [progressTask, setProgressTask] = useState(null);
   const [editTask, setEditTask] = useState(null);
+  const [transferTask, setTransferTask] = useState(null);
   const [users, setUsers] = useState([]);
   const [savingAssignee, setSavingAssignee] = useState(null);
   const [cancellingTaskId, setCancellingTaskId] = useState(null);
@@ -285,7 +287,27 @@ const cancellingTaskRef = useRef(false);
                 {activeSectionId === 'assignments' && taskRecords.length > 0 ? (
                   taskRecords.map((record) => (
                     <tr key={record.assignment_id}>
-                      <td className="task-table-text"><div>{record.title}</div>{record.description && <div className="small text-secondary mt-1">{record.description}</div>}</td>
+
+<td className="task-table-text">
+  <div>{record.title}</div>
+
+  {record.description && (
+    <div className="small text-secondary mt-1">
+      {record.description}
+    </div>
+  )}
+
+  <div className="small text-secondary mt-1">
+    Task #{record.assignment_id}
+  </div>
+
+  {record.transferred_from_assignment_id != null && (
+    <div className="small text-primary mt-1">
+      Transferred from Task #{record.transferred_from_assignment_id}
+    </div>
+  )}
+</td>
+
                      <td>
                         {isManager ? (
                           <>
@@ -301,10 +323,10 @@ const cancellingTaskRef = useRef(false);
                               }
                              disabled={
                               loading ||
-                              savingAssignee !== null ||
+                            savingAssignee !== null ||
                               cancellingTaskId !== null ||
                               !users.length ||
-                              ['Completed', 'Cancelled'].includes(record.status)
+                              ['Completed', 'Cancelled', 'Transferred'].includes(record.status)
 }
                               onChange={(event) =>
                                 changeAssignee(record, event.target.value)
@@ -355,9 +377,10 @@ const cancellingTaskRef = useRef(false);
           loading ||
           savingAssignee !== null ||
           cancellingTaskId !== null ||
-          record.status === 'Completed' ||
-          record.status === 'Cancelled'
+          ['Completed', 'Cancelled', 'Transferred'].includes(record.status)
         }
+
+
         aria-label={`Edit task ${record.title}`}
         onClick={() => {
           setSuccess('');
@@ -368,6 +391,26 @@ const cancellingTaskRef = useRef(false);
         Edit
       </button>
     )}
+
+    {isManager &&
+      ['Assigned', 'In Progress'].includes(record.status) && (
+        <button
+          type="button"
+          className="btn btn-outline-primary btn-sm"
+          disabled={
+            loading ||
+            savingAssignee !== null ||
+            cancellingTaskId !== null
+          }
+          onClick={() => {
+            setSuccess('');
+            setAssignmentError('');
+            setTransferTask(record);
+          }}
+        >
+          Transfer
+        </button>
+      )}
     {isManager && (
   <button
     type="button"
@@ -377,7 +420,7 @@ const cancellingTaskRef = useRef(false);
       savingAssignee !== null ||
       cancellingTaskId !== null ||
       record.status === 'Completed' ||
-      record.status === 'Cancelled'
+      ['Cancelled', 'Transferred'].includes(record.status)
     }
     onClick={() => cancelTask(record)}
   >
@@ -394,7 +437,7 @@ disabled={
   loading ||
   savingAssignee !== null ||
   cancellingTaskId !== null ||
-  record.status === 'Cancelled'
+  ['Cancelled', 'Transferred'].includes(record.status)
 }      aria-label={`Update progress for ${record.title}`}
       onClick={() => {
         setSuccess('');
@@ -441,6 +484,19 @@ disabled={
     }}
   />
 )}
+
+{transferTask && (
+  <TransferTaskModal
+    task={transferTask}
+    onClose={() => setTransferTask(null)}
+    onTransferred={({ original }) => {
+      setTransferTask(null);
+      setSuccess(`Task "${original.title}" transferred successfully.`);
+      refreshTasks();
+    }}
+  />
+)}
+
       {showTaskModal && <AddTaskModal onClose={() => setShowTaskModal(false)} onSaved={handleSaved} />}
       {progressTask && <TaskProgressModal task={progressTask} onClose={() => setProgressTask(null)} onSaved={(updated) => {
         setTaskRecords((records) => records.map((record) => record.assignment_id === updated.assignment_id ? updated : record));

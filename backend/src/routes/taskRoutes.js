@@ -36,6 +36,7 @@ router.patch('/handovers/:id/complete', handoverHandlers.completeHandover);
 router.get('/options', managerOnly, controller.getOptions);
 router.get('/reports/summary', managerOnly, reportController.getSummary);
 router.post('/', managerOnly, controller.createTask);
+router.post('/:id/transfer', managerOnly, controller.transferAssignment);
 router.patch('/:id/assignee', managerOnly, controller.updateAssignee);
 router.patch('/:id', managerOnly, controller.updateAssignment);
 router.patch('/:id/cancel', managerOnly, controller.cancelAssignment);

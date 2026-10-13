@@ -1,4 +1,5 @@
 const tasks = require('../models/taskModel');
+const { validateTaskTransfer } = require('../validation/taskTransferValidation');
 const {
   validateTask,
   validateAssignmentEdit,
@@ -165,4 +166,34 @@ exports.getOptions = async (req, res) => {
 
 exports.getHandoverOptions = async (req, res) => {
   return res.json(await tasks.handoverOptions());
+};
+
+exports.transferAssignment = async (req, res) => {
+  if (!validId(req.params.id)) {
+    return res.status(400).json({
+      message: 'Invalid task ID.',
+    });
+  }
+
+  const { errors, value } = validateTaskTransfer(req.body);
+
+  if (Object.keys(errors).length) {
+    return res.status(400).json({
+      message: 'Check the transfer details.',
+      errors,
+    });
+  }
+
+  const result = await tasks.transferAssignment(
+    Number(req.params.id),
+    value
+  );
+
+  if (!result) {
+    return res.status(404).json({
+      message: 'Task not found.',
+    });
+  }
+
+  return res.status(201).json(result);
 };
