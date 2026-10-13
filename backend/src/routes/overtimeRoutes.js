@@ -10,6 +10,8 @@ const {
   listOvertimeRecords,
   listEligibleOvertimeEmployees,
   createOvertimeRecord,
+  updateOvertimeRecord,
+  deleteOvertimeRecord,
 } = require('../models/overtimeModel');
 
 const router = express.Router();
@@ -19,7 +21,7 @@ const staffRoles = new Set([
   'Pharmacy Assistant',
 ]);
 
-// Validate a date in YYYY-MM-DD format.
+// Validate dates in YYYY-MM-DD format.
 function isValidDate(value) {
   if (
     typeof value !== 'string' ||
@@ -64,6 +66,18 @@ function isValidHours(value) {
   );
 }
 
+// Validate a positive integer record ID.
+function isValidRecordId(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^[1-9]\d*$/.test(value)
+  ) {
+    return false;
+  }
+
+  return Number.isSafeInteger(Number(value));
+}
+
 // GET /api/overtime
 // Managers see all records.
 // Staff see only their own records.
@@ -95,7 +109,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 });
 
 // GET /api/overtime/eligible-employees
-// Only managers can retrieve employees eligible for overtime.
+// Only managers can retrieve eligible employees.
 router.get(
   '/eligible-employees',
   requireAuth,
@@ -114,7 +128,7 @@ router.get(
 );
 
 // POST /api/overtime
-// Only managers can create overtime records for eligible staff.
+// Only managers can create Approved overtime.
 router.post(
   '/',
   requireAuth,
@@ -124,9 +138,7 @@ router.post(
       const employeeId = Number(req.body?.employee_id);
       const overtimeDate = req.body?.overtime_date;
       const hoursWorked = req.body?.hours_worked;
-      const status = req.body?.status;
 
-      // Validate employee ID.
       if (
         !Number.isSafeInteger(employeeId) ||
         employeeId < 1
@@ -136,7 +148,77 @@ router.post(
         });
       }
 
-      // Validate overtime date.
+      if (!isValidDate(overtimeDate)) {
+        return res.status(400).json({
+          message: 'Enter a valid overtime date.',
+        });
+      }
+
+      if (!isValidHours(hoursWorked)) {
+        return res.status(400).json({
+          message:
+            'Enter valid overtime hours greater than zero, with no more than two decimal places.',
+        });
+      }
+
+      // The manager verifies hours before creating the record.
+      // Ignore any status supplied by the browser.
+      const record = await createOvertimeRecord({
+        employee_id: employeeId,
+        overtime_date: overtimeDate,
+        hours_worked: Number(hoursWorked),
+        status: 'Approved',
+      });
+
+      if (!record) {
+        return res.status(400).json({
+          message:
+            'The selected employee is not eligible for overtime.',
+        });
+      }
+
+      return res.status(201).json({
+        message:
+          'Overtime record approved and saved successfully.',
+        record,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
+// PATCH /api/overtime/:overtimeId
+// Only the Owner/Manager can edit Approved overtime records.
+router.patch(
+  '/:overtimeId',
+  requireAuth,
+  requireRole('Owner/Manager'),
+  async (req, res, next) => {
+    try {
+      const { overtimeId } = req.params;
+
+      if (!isValidRecordId(overtimeId)) {
+        return res.status(400).json({
+          message: 'Invalid overtime record ID.',
+        });
+      }
+
+      const employeeId = Number(req.body?.employee_id);
+      const overtimeDate = req.body?.overtime_date;
+      const hoursWorked = req.body?.hours_worked;
+
+      // Validate the selected employee.
+      if (
+        !Number.isSafeInteger(employeeId) ||
+        employeeId < 1
+      ) {
+        return res.status(400).json({
+          message: 'Select a valid employee.',
+        });
+      }
+
+      // Validate the date.
       if (!isValidDate(overtimeDate)) {
         return res.status(400).json({
           message: 'Enter a valid overtime date.',
@@ -151,34 +233,74 @@ router.post(
         });
       }
 
-      // Validate status.
-      if (!['Pending', 'Approved'].includes(status)) {
-        return res.status(400).json({
-          message: 'Select a valid overtime status.',
-        });
-      }
-
-      // Save through the model.
-      // The model checks employee eligibility in MySQL.
-      const record = await createOvertimeRecord({
-        employee_id: employeeId,
-        overtime_date: overtimeDate,
-        hours_worked: Number(hoursWorked),
-        status,
-      });
+      // Update through the database model.
+      const record = await updateOvertimeRecord(
+        Number(overtimeId),
+        {
+          employee_id: employeeId,
+          overtime_date: overtimeDate,
+          hours_worked: Number(hoursWorked),
+        }
+      );
 
       if (!record) {
-        return res.status(400).json({
+        return res.status(409).json({
           message:
-            'The selected employee is not eligible for overtime.',
+            'Overtime cannot be updated. Confirm that the record is Approved and the selected employee is active and eligible.',
         });
       }
 
-      return res.status(201).json({
-        message: 'Overtime record created successfully.',
+      return res.status(200).json({
+        message: 'Overtime record updated successfully.',
         record,
       });
     } catch (error) {
+      return next(error);
+    }
+  }
+);
+
+// DELETE /api/overtime/:overtimeId
+// Permanently delete an overtime record.
+// Only the Owner/Manager has permission.
+router.delete(
+  '/:overtimeId',
+  requireAuth,
+  requireRole('Owner/Manager'),
+  async (req, res, next) => {
+    try {
+      const { overtimeId } = req.params;
+
+      if (!isValidRecordId(overtimeId)) {
+        return res.status(400).json({
+          message: 'Invalid overtime record ID.',
+        });
+      }
+
+      const deleted = await deleteOvertimeRecord(
+        Number(overtimeId)
+      );
+
+      if (!deleted) {
+        return res.status(404).json({
+          message: 'Overtime record not found.',
+        });
+      }
+
+      return res.status(200).json({
+        message: 'Overtime record deleted successfully.',
+      });
+    } catch (error) {
+      if (
+        error.code === 'ER_ROW_IS_REFERENCED' ||
+        error.code === 'ER_ROW_IS_REFERENCED_2'
+      ) {
+        return res.status(409).json({
+          message:
+            'This overtime record cannot be deleted because it is referenced by another record.',
+        });
+      }
+
       return next(error);
     }
   }

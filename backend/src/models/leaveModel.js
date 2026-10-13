@@ -15,6 +15,7 @@ const LEAVE_SELECT = `
   JOIN employee AS e ON e.employee_id = lr.employee_id
 `;
 
+// READ - Retrieve leave requests from MySQL.
 async function listLeaveRequests(employeeId = null) {
   let sql = LEAVE_SELECT;
   const params = [];
@@ -24,12 +25,15 @@ async function listLeaveRequests(employeeId = null) {
     params.push(employeeId);
   }
 
-  sql += ' ORDER BY lr.start_date DESC, lr.leave_request_id DESC LIMIT 200';
+  sql +=
+    ' ORDER BY lr.start_date DESC, lr.leave_request_id DESC LIMIT 200';
 
   const [requests] = await pool.execute(sql, params);
+
   return requests;
 }
 
+// CREATE - Submit a new Pending leave request.
 async function createLeaveRequest(employeeId, data) {
   const [result] = await pool.execute(
     `INSERT INTO leave_request
@@ -45,55 +49,16 @@ async function createLeaveRequest(employeeId, data) {
   );
 
   const [rows] = await pool.execute(
-    `${LEAVE_SELECT} WHERE lr.leave_request_id = ? LIMIT 1`,
+    `${LEAVE_SELECT}
+     WHERE lr.leave_request_id = ?
+     LIMIT 1`,
     [result.insertId]
   );
 
   return rows[0];
 }
 
-
-async function cancelPendingLeaveRequest(leaveRequestId, employeeId) {
-  // Only the owner can cancel an existing Pending request.
-  const [result] = await pool.execute(
-    `UPDATE leave_request
-     SET status = 'Cancelled'
-     WHERE leave_request_id = ?
-       AND employee_id = ?
-       AND status = 'Pending'`,
-    [leaveRequestId, employeeId]
-  );
-
-  if (result.affectedRows === 1) {
-    const [rows] = await pool.execute(
-      `${LEAVE_SELECT}
-       WHERE lr.leave_request_id = ?
-       LIMIT 1`,
-      [leaveRequestId]
-    );
-
-    return {
-      outcome: 'cancelled',
-      request: rows[0],
-    };
-  }
-
-  // Find out whether the request is missing or not Pending.
-  const [existing] = await pool.execute(
-    `SELECT status
-     FROM leave_request
-     WHERE leave_request_id = ?
-       AND employee_id = ?
-     LIMIT 1`,
-    [leaveRequestId, employeeId]
-  );
-
-  return {
-    outcome: existing.length === 0 ? 'not_found' : 'not_pending',
-  };
-}
-
-
+// UPDATE - Edit an employee's own Pending leave request.
 async function updatePendingLeaveRequest(
   leaveRequestId,
   employeeId,
@@ -131,7 +96,10 @@ async function updatePendingLeaveRequest(
     return { outcome: 'not_found' };
   }
 
-  if (result.affectedRows === 0 && existing[0].status !== 'Pending') {
+  if (
+    result.affectedRows === 0 &&
+    existing[0].status !== 'Pending'
+  ) {
     return { outcome: 'not_pending' };
   }
 
@@ -148,15 +116,56 @@ async function updatePendingLeaveRequest(
   };
 }
 
+// DELETE - Permanently delete an employee's own Pending request.
+async function deletePendingLeaveRequest(
+  leaveRequestId,
+  employeeId
+) {
+  // Check ownership and Pending status in the DELETE query.
+  const [result] = await pool.execute(
+    `DELETE FROM leave_request
+     WHERE leave_request_id = ?
+       AND employee_id = ?
+       AND status = 'Pending'`,
+    [leaveRequestId, employeeId]
+  );
 
+  if (result.affectedRows === 1) {
+    return {
+      outcome: 'deleted',
+    };
+  }
+
+  // Determine whether the request is missing or not Pending.
+  const [existing] = await pool.execute(
+    `SELECT status
+     FROM leave_request
+     WHERE leave_request_id = ?
+       AND employee_id = ?
+     LIMIT 1`,
+    [leaveRequestId, employeeId]
+  );
+
+  if (existing.length === 0) {
+    return {
+      outcome: 'not_found',
+    };
+  }
+
+  return {
+    outcome: 'not_pending',
+  };
+}
+
+// REVIEW - Manager approves or rejects a Pending request.
 async function reviewPendingLeaveRequest(
   leaveRequestId,
   managerEmployeeId,
   decision,
   reviewNote
 ) {
-  // Update only a Pending request belonging to another employee.
-  // This condition also protects against simultaneous decisions.
+  // Only Pending requests belonging to other employees
+  // can be approved or rejected.
   const [result] = await pool.execute(
     `UPDATE leave_request
      SET status = ?,
@@ -189,7 +198,6 @@ async function reviewPendingLeaveRequest(
     };
   }
 
-  // Find out why the request could not be reviewed.
   const [existing] = await pool.execute(
     `SELECT employee_id, status
      FROM leave_request
@@ -199,20 +207,26 @@ async function reviewPendingLeaveRequest(
   );
 
   if (existing.length === 0) {
-    return { outcome: 'not_found' };
+    return {
+      outcome: 'not_found',
+    };
   }
 
   if (existing[0].employee_id === managerEmployeeId) {
-    return { outcome: 'self_review' };
+    return {
+      outcome: 'self_review',
+    };
   }
 
-  return { outcome: 'not_pending' };
+  return {
+    outcome: 'not_pending',
+  };
 }
 
 module.exports = {
   listLeaveRequests,
   createLeaveRequest,
-  cancelPendingLeaveRequest,
   updatePendingLeaveRequest,
+  deletePendingLeaveRequest,
   reviewPendingLeaveRequest,
 };

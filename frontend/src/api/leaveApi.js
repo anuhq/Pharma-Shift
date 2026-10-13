@@ -19,12 +19,12 @@ async function leaveRequest(options = {}) {
   return data;
 }
 
-// READ - Get leave requests from MySQL
+// READ - Get leave requests from MySQL.
 export function getLeaveRequests() {
   return leaveRequest();
 }
 
-// CREATE - Submit a new leave request
+// CREATE - Submit a new Pending leave request.
 export function submitLeaveRequest(values) {
   return leaveRequest({
     method: 'POST',
@@ -32,7 +32,7 @@ export function submitLeaveRequest(values) {
   });
 }
 
-// UPDATE - Edit an existing Pending leave request
+// UPDATE - Edit an existing Pending leave request.
 export async function updateLeaveRequest(leaveId, values) {
   const response = await fetch(
     `${API_BASE_URL}/api/leave/${encodeURIComponent(leaveId)}`,
@@ -57,28 +57,7 @@ export async function updateLeaveRequest(leaveId, values) {
   return data;
 }
 
-// CANCEL - Cancel an existing Pending leave request
-export async function cancelLeaveRequest(leaveId) {
-  const response = await fetch(
-    `${API_BASE_URL}/api/leave/${encodeURIComponent(leaveId)}/cancel`,
-    {
-      method: 'PATCH',
-      credentials: 'include',
-    }
-  );
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(
-      data.message || 'Unable to cancel leave request.'
-    );
-  }
-
-  return data;
-}
-
-
+// REVIEW - Manager approves or rejects a Pending request.
 export async function reviewLeaveRequest(
   leaveId,
   decision,
@@ -104,6 +83,35 @@ export async function reviewLeaveRequest(
   if (!response.ok) {
     throw new Error(
       data.message || 'Unable to review leave request.'
+    );
+  }
+
+  return data;
+}
+
+// DELETE - Permanently delete the logged-in staff
+// member's own Pending leave request.
+export async function deleteLeaveRequest(leaveId) {
+  if (
+    !Number.isSafeInteger(leaveId) ||
+    leaveId < 1
+  ) {
+    throw new Error('Invalid leave request ID.');
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/leave/${encodeURIComponent(leaveId)}`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data.message || 'Unable to delete leave request.'
     );
   }
 

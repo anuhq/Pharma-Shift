@@ -15,6 +15,10 @@ const authRoutes = require('./routes/authRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
 const overtimeRoutes = require('./routes/overtimeRoutes');
+
+// Reports routes - Attendance, Leave and Overtime reports.
+const reportsRoutes = require('./routes/reportsRoutes');
+
 const incidentCategoryRoutes = require('./routes/incidentCategoryRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
 const investigationRoutes = require('./routes/investigationRoutes');
@@ -76,6 +80,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leave', leaveRoutes);
 app.use('/api/overtime', overtimeRoutes);
+
+// Generate reports using live MySQL data.
+// Authorization is enforced in reportsRoutes.js.
+app.use('/api/reports', reportsRoutes);
+
 app.use('/api/incident-categories', incidentCategoryRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/investigations', investigationRoutes);
