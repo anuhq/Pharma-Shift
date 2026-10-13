@@ -67,8 +67,148 @@ async function create(section, value) {
     connection.release();
    }}
 
-module.exports = { list, find, create, update, deactivate };
+async function updateHandover(id, value, currentUser) {
+  const connection = await pool.getConnection();
 
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT handover_id, employee_id, status
+       FROM shift_handover
+       WHERE handover_id = ?
+       FOR UPDATE`,
+      [id]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+    const handover = rows[0];
+    const isManager = currentUser.role_name === 'Owner/Manager';
+    const isOwner = handover.employee_id === currentUser.employee_id;
+
+    if (!isManager && !isOwner) {
+      await connection.rollback();
+      return null;
+    }
+
+    if (handover.status !== 'Open') {
+      throw Object.assign(
+        new Error('Only open handovers can be edited.'),
+        { status: 409 }
+      );
+    }
+
+    const [shifts] = await connection.execute(
+      `SELECT shift_type_id
+       FROM shift_type
+       WHERE shift_type_id = ? AND status = 'Active'
+       FOR UPDATE`,
+      [value.to_shift_type_id]
+    );
+
+    if (!shifts.length) {
+      throw Object.assign(
+        new Error('Select an active shift.'),
+        { status: 400 }
+      );
+    }
+
+    await connection.execute(
+      `UPDATE shift_handover
+       SET to_shift_type_id = ?,
+           handover_date = ?,
+           notes = ?,
+           priority = ?
+       WHERE handover_id = ?`,
+      [
+        value.to_shift_type_id,
+        value.handover_date,
+        value.notes,
+        value.priority,
+        id,
+      ]
+    );
+
+    const updated = await find('handovers', id, connection);
+
+    await connection.commit();
+    return updated;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+
+async function completeHandover(id, currentUser) {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT handover_id, employee_id, status
+       FROM shift_handover
+       WHERE handover_id = ?
+       FOR UPDATE`,
+      [id]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+    const handover = rows[0];
+    const isManager = currentUser.role_name === 'Owner/Manager';
+    const isOwner =
+      Number(handover.employee_id) === Number(currentUser.employee_id);
+
+    if (!isManager && !isOwner) {
+      await connection.rollback();
+      return null;
+    }
+
+    if (handover.status !== 'Open') {
+      throw Object.assign(
+        new Error('Only open handovers can be completed.'),
+        { status: 409 }
+      );
+    }
+
+    await connection.execute(
+      `UPDATE shift_handover
+       SET status = 'Completed'
+       WHERE handover_id = ?`,
+      [id]
+    );
+
+    const record = await find('handovers', id, connection);
+
+    await connection.commit();
+    return record;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+module.exports = {
+  list,
+  find,
+  create,
+  update,
+  deactivate,
+  updateHandover,
+  completeHandover,
+};
 async function deactivate(section, id) {
   if (!['templates', 'checklists'].includes(section)) {
     throw Object.assign(new Error('This record cannot be deactivated.'), { status: 400 });

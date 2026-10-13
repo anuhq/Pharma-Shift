@@ -96,7 +96,9 @@ onSaved(result.record);
       onCancel={(event) => { event.preventDefault(); if (!savingRef.current) onClose(); }}>
       <div className="modal-content">
         <div className="modal-header p-3 border-bottom">
-          <h4 id="section-modal-title" className="modal-title h5">Add {config.label}</h4>
+          <h4 id="section-modal-title" className="modal-title h5">
+  {record ? 'Edit' : 'Add'} {config.label}
+</h4>
           <button type="button" className="btn-close" aria-label="Close" disabled={saving} onClick={onClose} />
         </div>
         {!options && !loadError && <p className="p-3" role="status">Loading form options...</p>}
@@ -132,7 +134,7 @@ onSaved(result.record);
           </div>
           <div className="modal-footer p-3 border-top gap-2">
             <button type="button" className="btn btn-outline-secondary" disabled={saving} onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-success" disabled={saving || missingOptions}>{saving ? 'Saving...' : `Save ${config.label}`}</button>
+            <button type="submit" className="btn btn-success" disabled={saving || missingOptions}>{saving ? 'Saving...' : record ? 'Save Changes' : `Save ${config.label}`}</button>
           </div>
         </form>}
       </div>

@@ -1,5 +1,8 @@
 const tasks = require('../models/taskModel');
-const { validateTask } = require('../validation/taskValidation');
+const {
+  validateTask,
+  validateAssignmentEdit,
+} = require('../validation/taskValidation');
 const {
   validateProgress,
 } = require('../validation/taskProgressValidation');
@@ -108,7 +111,54 @@ exports.updateAssignee = async (req, res) => {
 
   return res.json({ task });
 };
+exports.updateAssignment = async (req, res) => {
+  if (!validId(req.params.id)) {
+    return res.status(400).json({
+      message: 'Invalid task ID.',
+    });
+  }
 
+  const { errors, value } = validateAssignmentEdit(req.body);
+
+  if (Object.keys(errors).length) {
+    return res.status(400).json({
+      message: 'Check the task details.',
+      errors,
+    });
+  }
+
+  const task = await tasks.updateAssignment(
+    Number(req.params.id),
+    value
+  );
+
+  if (!task) {
+    return res.status(404).json({
+      message: 'Task not found.',
+    });
+  }
+
+  return res.json({ task });
+};
+exports.cancelAssignment = async (req, res) => {
+  if (!validId(req.params.id)) {
+    return res.status(400).json({
+      message: 'Invalid task ID.',
+    });
+  }
+
+  const task = await tasks.cancelAssignment(
+    Number(req.params.id)
+  );
+
+  if (!task) {
+    return res.status(404).json({
+      message: 'Task not found.',
+    });
+  }
+
+  return res.json({ task });
+};
 exports.getOptions = async (req, res) => {
   return res.json(await tasks.options());
 };

@@ -24,6 +24,16 @@ export const getTasks = (signal) => request('', { signal });
 export const updateTaskAssignee = (id, userId) => request(`/${id}/assignee`, {
   method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId }),
 });
+export const updateTaskAssignment = (id, changes) =>
+  request(`/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  export const cancelTaskAssignment = (id) =>
+  request(`/${id}/cancel`, {
+    method: 'PATCH',
+  });
 export const updateTaskProgress = (id, progress) => request(`/${id}/progress`, {
   method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(progress),
 });
@@ -47,3 +57,7 @@ export const createTask = (task) => request('', {
 });
 export const getHandoverOptions = (signal) =>
   request('/handover-options', { signal });
+export const completeTaskHandover = (id) =>
+  request(`/handovers/${id}/complete`, {
+    method: 'PATCH',
+  });

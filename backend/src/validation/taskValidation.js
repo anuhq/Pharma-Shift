@@ -33,4 +33,76 @@ function validateTask(body, now = new Date()) {
   return { errors, value: { template_id, employee_id, shift_type_id, title, description, assigned_date: date, due_time, priority: input.priority } };
 }
 
-module.exports = { validateTask };
+module.exports = { validateTask, validateAssignmentEdit };
+function validateAssignmentEdit(body, now = new Date()) {
+  const input = body && typeof body === 'object' && !Array.isArray(body)
+    ? body
+    : {};
+
+  const errors = {};
+  const value = {};
+
+  const allowed = ['assigned_date', 'due_time', 'priority'];
+  const keys = Object.keys(input);
+
+  if (
+    keys.length === 0 ||
+    keys.some((key) => !allowed.includes(key))
+  ) {
+    errors.fields = 'Only task date, due time and priority can be edited.';
+  }
+
+  if (Object.hasOwn(input, 'assigned_date')) {
+    const date = input.assigned_date;
+    const parsed = typeof date === 'string'
+      ? new Date(`${date}T00:00:00Z`)
+      : new Date(NaN);
+
+    if (
+      typeof date !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      date < '2020-01-01' ||
+      date > '2100-12-31' ||
+      Number.isNaN(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== date
+    ) {
+      errors.assigned_date = 'Enter a valid task date.';
+    } else {
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Colombo',
+      }).format(now);
+
+      if (date < today) {
+        errors.assigned_date = 'Task date cannot be before today.';
+      } else {
+        value.assigned_date = date;
+      }
+    }
+  }
+
+  if (Object.hasOwn(input, 'due_time')) {
+    const dueTime = input.due_time === '' || input.due_time == null
+      ? null
+      : input.due_time;
+
+    if (
+      dueTime !== null &&
+      (typeof dueTime !== 'string' ||
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(dueTime))
+    ) {
+      errors.due_time = 'Enter a valid time (HH:mm).';
+    } else {
+      value.due_time = dueTime;
+    }
+  }
+
+  if (Object.hasOwn(input, 'priority')) {
+    if (!['Low', 'Medium', 'High'].includes(input.priority)) {
+      errors.priority = 'Select Low, Medium or High priority.';
+    } else {
+      value.priority = input.priority;
+    }
+  }
+
+  return { errors, value };
+}

@@ -2,8 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import AddTaskModal from '../components/tasks/AddTaskModal';
 import TaskSectionRecords from '../components/tasks/TaskSectionRecords';
 import TaskProgressModal from '../components/tasks/TaskProgressModal';
+import EditTaskModal from '../components/tasks/EditTaskModal';
 import TaskBadge from '../components/tasks/TaskBadge';
-import { getTasks, getTaskOptions, updateTaskAssignee } from '../services/taskApi';
+import {
+  getTasks,
+  getTaskOptions,
+  updateTaskAssignee,
+  cancelTaskAssignment,
+} from '../services/taskApi';
 import { useAuth } from '../auth/useAuth';
 const sections = [
   {
@@ -45,8 +51,11 @@ function TaskHandover() {
   const [success, setSuccess] = useState('');
   const [reload, setReload] = useState(0);
   const [progressTask, setProgressTask] = useState(null);
+  const [editTask, setEditTask] = useState(null);
   const [users, setUsers] = useState([]);
   const [savingAssignee, setSavingAssignee] = useState(null);
+  const [cancellingTaskId, setCancellingTaskId] = useState(null);
+const cancellingTaskRef = useRef(false);
   const [assignmentError, setAssignmentError] = useState('');
   const savingAssigneeRef = useRef(false);
   const { user } = useAuth();
@@ -127,6 +136,41 @@ function TaskHandover() {
     setShowTaskModal(false);
     refreshTasks();
   }
+  async function cancelTask(record) {
+  if (cancellingTaskRef.current) return;
+
+  const confirmed = window.confirm(
+    `Are you sure you want to cancel "${record.title}"? The task will remain in history.`
+  );
+
+  if (!confirmed) return;
+
+  cancellingTaskRef.current = true;
+  setCancellingTaskId(record.assignment_id);
+  setAssignmentError('');
+  setSuccess('');
+
+  try {
+    const { task: updated } = await cancelTaskAssignment(
+      record.assignment_id
+    );
+
+    setTaskRecords((records) =>
+      records.map((item) =>
+        item.assignment_id === updated.assignment_id
+          ? updated
+          : item
+      )
+    );
+
+    setSuccess(`Task "${updated.title}" cancelled successfully.`);
+  } catch (error) {
+    setAssignmentError(error.message);
+  } finally {
+    cancellingTaskRef.current = false;
+    setCancellingTaskId(null);
+  }
+}
 
   return (
     <div>
@@ -232,11 +276,13 @@ function TaskHandover() {
                                     assignedUser.employee_id === record.employee_id,
                                 )?.user_id || ''
                               }
-                              disabled={
-                                loading ||
-                                savingAssignee !== null ||
-                                !users.length
-                              }
+                             disabled={
+                              loading ||
+                              savingAssignee !== null ||
+                              cancellingTaskId !== null ||
+                              !users.length ||
+                              ['Completed', 'Cancelled'].includes(record.status)
+}
                               onChange={(event) =>
                                 changeAssignee(record, event.target.value)
                               }
@@ -276,9 +322,66 @@ function TaskHandover() {
                       <td><TaskBadge value={record.priority} /></td>
                       <td><TaskBadge value={record.status} /></td>
                       <td className="task-table-text">{record.completion_note || '—'}</td>
-                      <td><button type="button" className="btn btn-outline-primary btn-sm" disabled={loading || savingAssignee !== null}
-                        aria-label={`Update progress for ${record.title}`}
-                        onClick={() => { setSuccess(''); setProgressTask(record); }}>Update Progress</button></td>
+                      <td>
+  <div className="d-flex flex-nowrap align-items-center gap-2">
+    {isManager && (
+      <button
+        type="button"
+        className="btn btn-outline-secondary btn-sm"
+        disabled={
+          loading ||
+          savingAssignee !== null ||
+          cancellingTaskId !== null ||
+          record.status === 'Completed' ||
+          record.status === 'Cancelled'
+        }
+        aria-label={`Edit task ${record.title}`}
+        onClick={() => {
+          setSuccess('');
+          setAssignmentError('');
+          setEditTask(record);
+        }}
+      >
+        Edit
+      </button>
+    )}
+    {isManager && (
+  <button
+    type="button"
+    className="btn btn-outline-danger btn-sm"
+    disabled={
+      loading ||
+      savingAssignee !== null ||
+      cancellingTaskId !== null ||
+      record.status === 'Completed' ||
+      record.status === 'Cancelled'
+    }
+    onClick={() => cancelTask(record)}
+  >
+    {cancellingTaskId === record.assignment_id
+      ? 'Cancelling...'
+      : 'Cancel'}
+  </button>
+)}
+
+    <button
+      type="button"
+      className="btn btn-outline-primary btn-sm"
+disabled={
+  loading ||
+  savingAssignee !== null ||
+  cancellingTaskId !== null ||
+  record.status === 'Cancelled'
+}      aria-label={`Update progress for ${record.title}`}
+      onClick={() => {
+        setSuccess('');
+        setProgressTask(record);
+      }}
+    >
+      Update Progress
+    </button>
+  </div>
+</td>
                     </tr>
                   ))
                 ) : (
@@ -296,7 +399,25 @@ function TaskHandover() {
           </div>
         </div>
       </section>}
+        {editTask && (
+  <EditTaskModal
+    task={editTask}
+    onClose={() => setEditTask(null)}
+    onSaved={(updated) => {
+      setTaskRecords((records) =>
+        records.map((record) =>
+          record.assignment_id === updated.assignment_id
+            ? updated
+            : record
+        )
+      );
 
+      setSuccess(`Task "${updated.title}" updated successfully.`);
+      setEditTask(null);
+      refreshTasks();
+    }}
+  />
+)}
       {showTaskModal && <AddTaskModal onClose={() => setShowTaskModal(false)} onSaved={handleSaved} />}
       {progressTask && <TaskProgressModal task={progressTask} onClose={() => setProgressTask(null)} onSaved={(updated) => {
         setTaskRecords((records) => records.map((record) => record.assignment_id === updated.assignment_id ? updated : record));

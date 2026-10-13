@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   getTaskSection,
   deactivateTaskSection,
+  completeTaskHandover,
 } from '../../services/taskApi';
 import TaskSectionModal from './TaskSectionModal';
 import { taskSections } from './taskSections';
@@ -25,6 +26,7 @@ export default function TaskSectionRecords({ section }) {
   const [showModal, setShowModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [completingId, setCompletingId] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -91,6 +93,53 @@ export default function TaskSectionRecords({ section }) {
     setShowModal(false);
     setEditingRecord(null);
   }
+
+async function handleCompleteHandover(record) {
+  if (
+    section.id !== 'handovers' ||
+    record.status !== 'Open' ||
+    completingId !== null
+  ) {
+    return;
+  }
+
+  const isOwner =
+    user?.employeeId != null &&
+    Number(user.employeeId) === Number(record.employee_id);
+
+  if (!isManager && !isOwner) return;
+
+  const confirmed = window.confirm(
+    'Mark this shift handover as completed? The record will be kept for history.'
+  );
+
+  if (!confirmed) return;
+
+  setCompletingId(record.handover_id);
+  setError('');
+  setSuccess('');
+
+  try {
+    const { record: updated } = await completeTaskHandover(
+      record.handover_id
+    );
+
+    setRecords((current) =>
+      current.map((item) =>
+        item.handover_id === updated.handover_id
+          ? updated
+          : item
+      )
+    );
+
+    setSuccess('Shift handover completed successfully.');
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setCompletingId(null);
+  }
+}
+
   async function handleDeactivate(record) {
   if (!canEdit || record.status !== 'Active' || deletingId !== null) {
     return;
@@ -218,9 +267,9 @@ export default function TaskSectionRecords({ section }) {
                     </th>
                   ))}
 
-                  {canEdit && (
-                    <th scope="col">Actions</th>
-                  )}
+                  {(canEdit || section.id === 'handovers') && (
+                     <th scope="col">Actions</th>
+                     )}
                 </tr>
               </thead>
 
@@ -274,6 +323,45 @@ export default function TaskSectionRecords({ section }) {
                         </div>
                       </td>
                     )}
+
+{section.id === 'handovers' && (
+  <td>
+    {(isManager ||
+      (user?.employeeId != null &&
+        Number(user.employeeId) === Number(record.employee_id))) && (
+      <div className="d-flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn btn-outline-primary btn-sm"
+          disabled={
+            loading ||
+            completingId !== null ||
+            record.status !== 'Open'
+          }
+          onClick={() => openEdit(record)}
+        >
+          Edit
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-outline-success btn-sm"
+          disabled={
+            loading ||
+            completingId !== null ||
+            record.status !== 'Open'
+          }
+          onClick={() => handleCompleteHandover(record)}
+        >
+          {completingId === record.handover_id
+            ? 'Completing...'
+            : 'Complete'}
+        </button>
+      </div>
+    )}
+  </td>
+)}
+
                   </tr>
                 ))}
 
@@ -281,7 +369,7 @@ export default function TaskSectionRecords({ section }) {
                   <tr>
                     <td
                       colSpan={
-                        config.columns.length + (canEdit ? 1 : 0)
+                        config.columns.length + (canEdit || section.id === 'handovers' ? 1 : 0)
                       }
                       className="text-center text-muted py-5"
                     >

@@ -28,11 +28,15 @@ router.delete('/checklists/:id', managerOnly, checklistHandlers.deactivate);
 router.get('/handovers', handoverHandlers.list);
 router.get('/handovers/:id', handoverHandlers.find);
 router.post('/handovers', handoverHandlers.create);
+router.patch('/handovers/:id', handoverHandlers.updateHandover);
+router.patch('/handovers/:id/complete', handoverHandlers.completeHandover);
 
 // Manager-only assignment information and actions.
 router.get('/options', managerOnly, controller.getOptions);
 router.post('/', managerOnly, controller.createTask);
 router.patch('/:id/assignee', managerOnly, controller.updateAssignee);
+router.patch('/:id', managerOnly, controller.updateAssignment);
+router.patch('/:id/cancel', managerOnly, controller.cancelAssignment);
 
 // Managers and staff can use these routes.
 // Ownership checks will be added in the controller and model.
