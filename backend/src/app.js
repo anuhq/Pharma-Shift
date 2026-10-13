@@ -1,3 +1,4 @@
+
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -12,6 +13,12 @@ const rosterRoutes = require('./routes/rosterRoutes');
 const { sessionMiddleware } = require('./config/session');
 const authRoutes = require('./routes/authRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
+const leaveRoutes = require('./routes/leaveRoutes');
+const overtimeRoutes = require('./routes/overtimeRoutes');
+
+// Reports routes - Attendance, Leave and Overtime reports.
+const reportsRoutes = require('./routes/reportsRoutes');
+
 const incidentCategoryRoutes = require('./routes/incidentCategoryRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
 const investigationRoutes = require('./routes/investigationRoutes');
@@ -71,6 +78,13 @@ app.use(
 app.use('/api/roster', rosterRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/leave', leaveRoutes);
+app.use('/api/overtime', overtimeRoutes);
+
+// Generate reports using live MySQL data.
+// Authorization is enforced in reportsRoutes.js.
+app.use('/api/reports', reportsRoutes);
+
 app.use('/api/incident-categories', incidentCategoryRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/investigations', investigationRoutes);
@@ -82,9 +96,23 @@ app.use((error, req, res, next) => {
     return next(error);
   }
 
-  if (error.type === 'entity.parse.failed') return res.status(400).json({ message: 'Request body must be valid JSON.' });
-  if (error.type === 'entity.too.large') return res.status(413).json({ message: 'Request body is too large.' });
-  if (error.status === 400) return res.status(400).json({ message: error.message });
+  if (error.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      message: 'Request body must be valid JSON.',
+    });
+  }
+
+  if (error.type === 'entity.too.large') {
+    return res.status(413).json({
+      message: 'Request body is too large.',
+    });
+  }
+
+  if (error.status === 400) {
+    return res.status(400).json({
+      message: error.message,
+    });
+  }
 
   console.error(
     'Request failed:',
