@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
-import { getTaskSection } from '../../services/taskApi';
+import {
+  getTaskSection,
+  deactivateTaskSection,
+  completeTaskHandover,
+} from '../../services/taskApi';
 import TaskSectionModal from './TaskSectionModal';
 import { taskSections } from './taskSections';
 import TaskBadge from './TaskBadge';
@@ -9,77 +13,388 @@ export default function TaskSectionRecords({ section }) {
   const config = taskSections[section.id];
   const { user } = useAuth();
 
-  const canCreate =
-    user?.roleName === 'Owner/Manager' ||
-    section.id === 'handovers';
+  const isManager = user?.roleName === 'Owner/Manager';
+  const canCreate = isManager || section.id === 'handovers';
+  const canEdit =
+    isManager && ['templates', 'checklists'].includes(section.id);
+
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [reload, setReload] = useState(0);
   const [showModal, setShowModal] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [completingId, setCompletingId] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
+
     getTaskSection(section.id, controller.signal)
-      .then((data) => { if (!controller.signal.aborted) setRecords(data.records); })
-      .catch((err) => { if (!controller.signal.aborted) setError(err.message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setRecords(data.records);
+          setError('');
+        }
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      });
+
     return () => controller.abort();
   }, [section.id, reload]);
 
   function saved(record) {
-    setRecords((current) => [record, ...current].sort((a, b) =>
-      (section.id === 'handovers' ? b.handover_date.localeCompare(a.handover_date) : 0) || b[config.id] - a[config.id]));
+    const wasEditing = editingRecord !== null;
+
+    setRecords((current) => {
+      const existing = current.some(
+        (item) => item[config.id] === record[config.id]
+      );
+
+      const updated = existing
+        ? current.map((item) =>
+            item[config.id] === record[config.id] ? record : item
+          )
+        : [record, ...current];
+
+      return updated.sort(
+        (a, b) =>
+          (section.id === 'handovers'
+            ? b.handover_date.localeCompare(a.handover_date)
+            : 0) ||
+          b[config.id] - a[config.id]
+      );
+    });
+
     setShowModal(false);
-    setSuccess(`${config.label} saved successfully.`);
+    setEditingRecord(null);
+    setSuccess(
+      `${config.label} ${wasEditing ? 'updated' : 'saved'} successfully.`
+    );
   }
 
-  return <>
-    <section id="task-handover-content" className="card border-0 shadow-sm" aria-labelledby="task-handover-section-title">
-      <div className="card-body p-4">
-        <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-          <div>
-            <h3 id="task-handover-section-title" className="h5 mb-2">{section.title}</h3>
-            <p className="text-muted mb-0">{section.description}</p>
-          </div>
-          {canCreate && (
+  function openEdit(record) {
+    setSuccess('');
+    setError('');
+    setEditingRecord(record);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    setEditingRecord(null);
+  }
+
+async function handleCompleteHandover(record) {
+  if (
+    section.id !== 'handovers' ||
+    record.status !== 'Open' ||
+    completingId !== null
+  ) {
+    return;
+  }
+
+  const isOwner =
+    user?.employeeId != null &&
+    Number(user.employeeId) === Number(record.employee_id);
+
+  if (!isManager && !isOwner) return;
+
+  const confirmed = window.confirm(
+    'Mark this shift handover as completed? The record will be kept for history.'
+  );
+
+  if (!confirmed) return;
+
+  setCompletingId(record.handover_id);
+  setError('');
+  setSuccess('');
+
+  try {
+    const { record: updated } = await completeTaskHandover(
+      record.handover_id
+    );
+
+    setRecords((current) =>
+      current.map((item) =>
+        item.handover_id === updated.handover_id
+          ? updated
+          : item
+      )
+    );
+
+    setSuccess('Shift handover completed successfully.');
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setCompletingId(null);
+  }
+}
+
+  async function handleDeactivate(record) {
+  if (!canEdit || record.status !== 'Active' || deletingId !== null) {
+    return;
+  }
+
+  const id = record[config.id];
+  const name =
+    record.template_name ||
+    record.checklist_name ||
+    config.label;
+
+  const confirmed = window.confirm(
+    `Deactivate "${name}"?\n\n` +
+    'The record will be kept for history.'
+  );
+
+  if (!confirmed) return;
+
+  setDeletingId(id);
+  setError('');
+  setSuccess('');
+
+  try {
+    const result = await deactivateTaskSection(section.id, id);
+
+    setRecords((current) =>
+      current.map((item) =>
+        item[config.id] === id ? result.record : item
+      )
+    );
+
+    setSuccess(`${config.label} deactivated successfully.`);
+  } catch (error) {
+    setError(error.message);
+  } finally {
+    setDeletingId(null);
+  }
+}
+
+  return (
+    <>
+      <section
+        id="task-handover-content"
+        className="card border-0 shadow-sm"
+        aria-labelledby="task-handover-section-title"
+      >
+        <div className="card-body p-4">
+          <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+            <div>
+              <h3
+                id="task-handover-section-title"
+                className="h5 mb-2"
+              >
+                {section.title}
+              </h3>
+              <p className="text-muted mb-0">
+                {section.description}
+              </p>
+            </div>
+
+            {canCreate && (
               <button
                 type="button"
                 className="btn btn-success flex-shrink-0"
                 disabled={loading}
                 onClick={() => {
                   setSuccess('');
+                  setEditingRecord(null);
                   setShowModal(true);
                 }}
               >
                 Add {config.label}
               </button>
             )}
-        </div>
-        {success && <div className="alert alert-success" role="status">{success}</div>}
-        {error && <div className="alert alert-danger" role="alert">{error}</div>}
-        <button type="button" className="btn btn-outline-secondary btn-sm mb-3" disabled={loading}
-          onClick={() => { setLoading(true); setError(''); setReload((value) => value + 1); }}>{loading ? 'Loading...' : 'Refresh records'}</button>
-        {!loading && !error && <p className="small text-secondary mb-3" role="status">Showing {records.length} saved {records.length === 1 ? 'record' : 'records'}.</p>}
-        <div className="table-responsive task-table-scroll" role="region" aria-label={`${section.title} table`} tabIndex={0}>
-          <table className="table table-hover align-middle mb-0 task-records-table">
-            <caption className="visually-hidden">{section.title}</caption>
-            <thead className="table-light"><tr>{config.columns.map(([field, label]) => <th key={field} scope="col">{label}</th>)}</tr></thead>
-            <tbody>
-              {records.map((record) => <tr key={record[config.id]}>
-                {config.columns.map(([field]) => <td key={field} className={['template_name', 'checklist_name', 'description', 'notes'].includes(field) ? 'task-table-text' : undefined}>
-                  {field === 'status' || field === 'priority' ? <TaskBadge value={record[field]} /> : record[field] || '—'}
-                </td>)}
-              </tr>)}
-              {!records.length && <tr><td colSpan={config.columns.length} className="text-center text-muted py-5">
-                {loading ? 'Loading records...' : error ? 'Records could not be loaded. Refresh to retry.' : `No records yet. Click Add ${config.label} to create one.`}
-              </td></tr>}
-            </tbody>
-          </table>
-        </div>
+          </div>
+
+          {success && (
+            <div className="alert alert-success" role="status">
+              {success}
+            </div>
+          )}
+
+          {error && (
+            <div className="alert alert-danger" role="alert">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm mb-3"
+            disabled={loading}
+            onClick={() => {
+              setLoading(true);
+              setError('');
+              setReload((value) => value + 1);
+            }}
+          >
+            {loading ? 'Loading...' : 'Refresh records'}
+          </button>
+
+          {!loading && !error && (
+            <p className="small text-secondary mb-3" role="status">
+              Showing {records.length} saved{' '}
+              {records.length === 1 ? 'record' : 'records'}.
+            </p>
+          )}
+
+          <div
+            className="table-responsive task-table-scroll"
+            role="region"
+            aria-label={`${section.title} table`}
+            tabIndex={0}
+          >
+            <table className="table table-hover align-middle mb-0 task-records-table">
+              <caption className="visually-hidden">
+                {section.title}
+              </caption>
+
+              <thead className="table-light">
+                <tr>
+                  {config.columns.map(([field, label]) => (
+                    <th key={field} scope="col">
+                      {label}
+                    </th>
+                  ))}
+
+                  {(canEdit || section.id === 'handovers') && (
+                     <th scope="col">Actions</th>
+                     )}
+                </tr>
+              </thead>
+
+              <tbody>
+                {records.map((record) => (
+                  <tr key={record[config.id]}>
+                    {config.columns.map(([field]) => (
+                      <td
+                        key={field}
+                        className={
+                          [
+                            'template_name',
+                            'checklist_name',
+                            'description',
+                            'notes',
+                          ].includes(field)
+                            ? 'task-table-text'
+                            : undefined
+                        }
+                      >
+                        {field === 'status' ||
+                        field === 'priority' ? (
+                          <TaskBadge value={record[field]} />
+                        ) : (
+                          record[field] || '—'
+                        )}
+                      </td>
+                    ))}
+
+                    {canEdit && (
+                      <td>
+                        <div className="d-flex flex-nowrap align-items-center gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-outline-primary btn-sm"
+                            disabled={record.status !== 'Active' || deletingId !== null}
+                            onClick={() => openEdit(record)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline-danger btn-sm"
+                            disabled={record.status !== 'Active' || deletingId !== null}
+                            onClick={() => handleDeactivate(record)}
+                          >
+                            {deletingId === record[config.id]
+                              ? 'Deactivating...'
+                              : 'Deactivate'}
+                          </button>
+                        </div>
+                      </td>
+                    )}
+
+{section.id === 'handovers' && (
+  <td>
+    {(isManager ||
+      (user?.employeeId != null &&
+        Number(user.employeeId) === Number(record.employee_id))) && (
+      <div className="d-flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn btn-outline-primary btn-sm"
+          disabled={
+            loading ||
+            completingId !== null ||
+            record.status !== 'Open'
+          }
+          onClick={() => openEdit(record)}
+        >
+          Edit
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-outline-success btn-sm"
+          disabled={
+            loading ||
+            completingId !== null ||
+            record.status !== 'Open'
+          }
+          onClick={() => handleCompleteHandover(record)}
+        >
+          {completingId === record.handover_id
+            ? 'Completing...'
+            : 'Complete'}
+        </button>
       </div>
-    </section>
-    {showModal && <TaskSectionModal section={section.id} onClose={() => setShowModal(false)} onSaved={saved} />}
-  </>;
+    )}
+  </td>
+)}
+
+                  </tr>
+                ))}
+
+                {!records.length && (
+                  <tr>
+                    <td
+                      colSpan={
+                        config.columns.length + (canEdit || section.id === 'handovers' ? 1 : 0)
+                      }
+                      className="text-center text-muted py-5"
+                    >
+                      {loading
+                        ? 'Loading records...'
+                        : error
+                          ? 'Records could not be loaded. Refresh to retry.'
+                          : 'No records found.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {showModal && (
+        <TaskSectionModal
+          section={section.id}
+          record={editingRecord}
+          onClose={closeModal}
+          onSaved={saved}
+        />
+      )}
+    </>
+  );
 }

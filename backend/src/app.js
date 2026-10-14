@@ -108,11 +108,13 @@ app.use((error, req, res, next) => {
     });
   }
 
-  if (error.status === 400) {
-    return res.status(400).json({
-      message: error.message,
-    });
-  }
+
+if ([400, 409].includes(error.status)) {
+  return res.status(error.status).json({
+    message: error.message,
+  });
+}
+
 
   console.error(
     'Request failed:',

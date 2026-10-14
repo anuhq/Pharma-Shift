@@ -129,6 +129,7 @@ CREATE TABLE task_template (
         REFERENCES task_checklist(checklist_id)
 );
 
+
 CREATE TABLE task_assignment (
     assignment_id INT AUTO_INCREMENT PRIMARY KEY,
     template_id INT NOT NULL,
@@ -139,6 +140,7 @@ CREATE TABLE task_assignment (
     priority VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL,
     completion_note VARCHAR(255),
+    transferred_from_assignment_id INT NULL,
 
     CONSTRAINT fk_assignment_template
         FOREIGN KEY (template_id)
@@ -150,8 +152,16 @@ CREATE TABLE task_assignment (
 
     CONSTRAINT fk_assignment_shift_type
         FOREIGN KEY (shift_type_id)
-        REFERENCES shift_type(shift_type_id)
+        REFERENCES shift_type(shift_type_id),
+
+    CONSTRAINT uq_task_assignment_transfer_source
+        UNIQUE (transferred_from_assignment_id),
+
+    CONSTRAINT fk_task_assignment_transfer_source
+        FOREIGN KEY (transferred_from_assignment_id)
+        REFERENCES task_assignment(assignment_id)
 );
+
 
 CREATE TABLE shift_handover (
     handover_id INT AUTO_INCREMENT PRIMARY KEY,

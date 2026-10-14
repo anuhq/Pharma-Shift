@@ -1,6 +1,9 @@
 const pool = require('../config/db');
 
+
 const selectTasks = `SELECT a.assignment_id, a.template_id, a.employee_id, a.shift_type_id,
+  a.transferred_from_assignment_id,
+
   DATE_FORMAT(a.assigned_date, '%Y-%m-%d') AS assigned_date,
   TIME_FORMAT(a.due_time, '%H:%i') AS due_time, a.priority, a.status,
   a.completion_note, t.template_name AS title, t.description,
@@ -19,7 +22,7 @@ async function list(currentUser) {
   }
 
   query +=
-    ' ORDER BY a.assigned_date DESC, a.assignment_id DESC';
+    ' ORDER BY a.assignment_id DESC';
 
   const [rows] = await pool.execute(query, parameters);
   return rows;
@@ -105,8 +108,8 @@ async function updateProgress(id, progress, currentUser) {
     await connection.beginTransaction();
 
     let query =
-      'SELECT assignment_id FROM task_assignment ' +
-      'WHERE assignment_id = ?';
+  'SELECT assignment_id, status FROM task_assignment ' +
+  'WHERE assignment_id = ?';
     const parameters = [id];
 
     if (currentUser.role_name !== 'Owner/Manager') {
@@ -125,6 +128,15 @@ async function updateProgress(id, progress, currentUser) {
       await connection.rollback();
       return null;
     }
+
+if (['Cancelled', 'Transferred'].includes(rows[0].status)) {
+  const error = new Error(
+    'Cancelled or transferred tasks cannot be updated.'
+  );
+  error.status = 409;
+  throw error;
+}
+
 
     await connection.execute(
       `UPDATE task_assignment
@@ -149,15 +161,159 @@ async function updateAssignee(id, userId) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [assignments] = await connection.execute('SELECT assignment_id FROM task_assignment WHERE assignment_id = ? FOR UPDATE', [id]);
+    const [assignments] = await connection.execute(
+  'SELECT assignment_id, status FROM task_assignment WHERE assignment_id = ? FOR UPDATE',
+  [id]
+);
     if (!assignments.length) {
       await connection.rollback();
       return null;
     }
+    if (['Cancelled', 'Completed', 'Transferred'].includes(assignments[0].status)) {
+  const error = new Error(
+    'Completed, cancelled or transferred tasks cannot be reassigned.'
+  );
+  error.status = 409;
+  throw error;
+}
     const [users] = await connection.execute("SELECT u.employee_id FROM user u JOIN employee e ON e.employee_id = u.employee_id WHERE u.user_id = ? AND u.status = 'Active' AND e.status = 'Active' FOR UPDATE", [userId]);
     if (!users.length) throw Object.assign(new Error('This user is no longer active. Refresh the task list and choose another user.'), { status: 400 });
     await connection.execute('UPDATE task_assignment SET employee_id = ?, shift_type_id = NULL WHERE assignment_id = ?', [users[0].employee_id, id]);
-    const task = await find(id, connection);
+    const task = await find(id, { role_name: 'Owner/Manager' }, connection);
+    await connection.commit();
+    return task;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+async function updateAssignment(id, updates) {
+  const allowedFields = ['assigned_date', 'due_time', 'priority'];
+  const entries = Object.entries(updates);
+
+  if (
+    entries.length === 0 ||
+    entries.some(([field]) => !allowedFields.includes(field))
+  ) {
+    throw Object.assign(
+      new Error('Invalid task update fields.'),
+      { status: 400 }
+    );
+  }
+
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT assignment_id, status
+       FROM task_assignment
+       WHERE assignment_id = ?
+       FOR UPDATE`,
+      [id]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+   if (['Completed', 'Cancelled', 'Transferred'].includes(rows[0].status)) {
+  throw Object.assign(
+    new Error('Completed, cancelled or transferred tasks cannot be edited.'),
+    { status: 409 }
+  );
+}
+
+    const setClause = entries
+      .map(([field]) => `${field} = ?`)
+      .join(', ');
+
+    const values = entries.map(([, value]) => value);
+
+    await connection.execute(
+      `UPDATE task_assignment
+       SET ${setClause}
+       WHERE assignment_id = ?`,
+      [...values, id]
+    );
+
+    const task = await find(
+      id,
+      { role_name: 'Owner/Manager' },
+      connection
+    );
+
+    await connection.commit();
+    return task;
+
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+
+  } finally {
+    connection.release();
+  }
+}
+
+
+async function cancelAssignment(id) {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT assignment_id, status
+       FROM task_assignment
+       WHERE assignment_id = ?
+       FOR UPDATE`,
+      [id]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+    if (rows[0].status === 'Completed') {
+      throw Object.assign(
+        new Error('Completed tasks cannot be cancelled.'),
+        { status: 409 }
+      );
+    }
+
+    if (rows[0].status === 'Cancelled') {
+      throw Object.assign(
+        new Error('This task is already cancelled.'),
+        { status: 409 }
+      );
+    }
+
+if (rows[0].status === 'Transferred') {
+  throw Object.assign(
+    new Error('Transferred tasks cannot be cancelled.'),
+    { status: 409 }
+  );
+}
+
+
+    await connection.execute(
+      `UPDATE task_assignment
+       SET status = 'Cancelled'
+       WHERE assignment_id = ?`,
+      [id]
+    );
+
+    const task = await find(
+      id,
+      { role_name: 'Owner/Manager' },
+      connection
+    );
+
     await connection.commit();
     return task;
   } catch (error) {
@@ -168,7 +324,7 @@ async function updateAssignee(id, userId) {
   }
 }
 
-async function handoverOptions() {
+async function handoverOptions(){
   const [shifts] = await pool.execute(
     `SELECT shift_type_id, shift_name
      FROM shift_type
@@ -179,6 +335,152 @@ async function handoverOptions() {
   return { shifts };
 }
 
+async function transferAssignment(id, transfer) {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT assignment_id, template_id, shift_type_id,
+              DATE_FORMAT(assigned_date, '%Y-%m-%d') AS assigned_date,
+              priority, status
+       FROM task_assignment
+       WHERE assignment_id = ?
+       FOR UPDATE`,
+      [id]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+    const original = rows[0];
+
+    if (!['Assigned', 'In Progress'].includes(original.status)) {
+      throw Object.assign(
+        new Error('Only unfinished tasks can be transferred.'),
+        { status: 409 }
+      );
+    }
+
+    const [users] = await connection.execute(
+      `SELECT u.employee_id
+       FROM user u
+       JOIN employee e ON e.employee_id = u.employee_id
+       WHERE u.user_id = ?
+         AND u.status = 'Active'
+         AND e.status = 'Active'
+       FOR UPDATE`,
+      [transfer.user_id]
+    );
+
+    if (!users.length) {
+      throw Object.assign(
+        new Error('Select an active registered employee.'),
+        { status: 400 }
+      );
+    }
+
+    const [shifts] = await connection.execute(
+      `SELECT shift_type_id, start_time
+       FROM shift_type
+       WHERE shift_type_id = ? AND status = 'Active'
+       FOR UPDATE`,
+      [transfer.shift_type_id]
+    );
+
+    if (!shifts.length) {
+      throw Object.assign(
+        new Error('Select an active receiving shift.'),
+        { status: 400 }
+      );
+    }
+
+    if (transfer.assigned_date < original.assigned_date) {
+      throw Object.assign(
+        new Error('The receiving shift date cannot be earlier than the original task date.'),
+        { status: 400 }
+      );
+    }
+
+    if (transfer.assigned_date === original.assigned_date) {
+      if (original.shift_type_id === null) {
+        throw Object.assign(
+          new Error('The original task has no shift. Choose a later date.'),
+          { status: 400 }
+        );
+      }
+
+      const [originalShifts] = await connection.execute(
+        `SELECT start_time
+         FROM shift_type
+         WHERE shift_type_id = ?`,
+        [original.shift_type_id]
+      );
+
+      if (
+        !originalShifts.length ||
+        shifts[0].start_time <= originalShifts[0].start_time
+      ) {
+        throw Object.assign(
+          new Error('Select a later shift for the same day.'),
+          { status: 400 }
+        );
+      }
+    }
+
+    const [result] = await connection.execute(
+      `INSERT INTO task_assignment
+        (template_id, employee_id, shift_type_id,
+         assigned_date, due_time, priority, status,
+         transferred_from_assignment_id)
+       VALUES (?, ?, ?, ?, NULL, ?, 'Assigned', ?)`,
+      [
+        original.template_id,
+        users[0].employee_id,
+        transfer.shift_type_id,
+        transfer.assigned_date,
+        original.priority,
+        id,
+      ]
+    );
+
+    await connection.execute(
+      `UPDATE task_assignment
+       SET status = 'Transferred'
+       WHERE assignment_id = ?`,
+      [id]
+    );
+
+    const newTask = await find(
+      result.insertId,
+      { role_name: 'Owner/Manager' },
+      connection
+    );
+
+    const originalTask = await find(
+      id,
+      { role_name: 'Owner/Manager' },
+      connection
+    );
+
+    await connection.commit();
+
+    return {
+      task: newTask,
+      original: originalTask,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+
 module.exports = {
   list,
   find,
@@ -187,4 +489,7 @@ module.exports = {
   create,
   updateProgress,
   updateAssignee,
+  updateAssignment,
+  cancelAssignment,
+  transferAssignment,
 };
