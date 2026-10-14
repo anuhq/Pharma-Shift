@@ -7,6 +7,7 @@ import AssignedShiftManagement, {
 } from '../components/employeeShift/AssignedShiftManagement';
 import { useAuth } from '../auth/useAuth';
 import RoleManagement from '../components/employeeShift/RoleManagement';
+import EmployeeShiftReports from '../components/employeeShift/EmployeeShiftReports';
 
 function EmployeeShift() {
   const [activeSection, setActiveSection] = useState('employees');
@@ -25,10 +26,11 @@ function EmployeeShift() {
     return <MyAssignedShifts key={user.employeeId} />;
   }
   const sections = [
-    { id: 'employees', label: 'Employees' },
-    { id: 'roles', label: 'Roles' },
-    { id: 'shift-types', label: 'Shift Types' },
-    { id: 'roster', label: 'Work Roster' },
+  { id: 'employees', label: 'Employees' },
+  { id: 'roles', label: 'Roles' },
+  { id: 'shift-types', label: 'Shift Types' },
+  { id: 'roster', label: 'Work Roster' },
+  { id: 'reports', label: 'Reports' },
   ];
 
   return (
@@ -65,6 +67,7 @@ function EmployeeShift() {
       {activeSection === 'roles' && <RolesSection />}
       {activeSection === 'shift-types' && <ShiftTypesSection />}
       {activeSection === 'roster' && <RosterSection />}
+      {activeSection === 'reports' && <EmployeeShiftReports />}
     </div>
   );
 }
