@@ -30,7 +30,6 @@ const statusClasses = {
   Rejected: 'text-bg-danger',
 };
 
-// Shared columns keep the displayed table, CSV and printout consistent.
 const reportColumns = {
   attendance: [
     { key: 'full_name', label: 'Employee' },
@@ -69,27 +68,73 @@ const reportColumns = {
 function getSummaryCards(type, summary) {
   if (type === 'attendance') {
     return [
-      { label: 'Records in range', value: summary.totalRecords ?? 0, style: 'bg-primary-subtle' },
-      { label: 'Completed check-outs', value: summary.completedRecords ?? 0, style: 'bg-success-subtle' },
-      { label: 'Not checked out', value: summary.notCheckedOutRecords ?? 0, style: 'bg-warning-subtle' },
-      { label: 'After shift start', value: summary.afterShiftStartRecords ?? 0, style: 'bg-light' },
+      {
+        label: 'Records in range',
+        value: summary.totalRecords ?? 0,
+        style: 'bg-primary-subtle',
+      },
+      {
+        label: 'Completed check-outs',
+        value: summary.completedRecords ?? 0,
+        style: 'bg-success-subtle',
+      },
+      {
+        label: 'Not checked out',
+        value: summary.notCheckedOutRecords ?? 0,
+        style: 'bg-warning-subtle',
+      },
+      {
+        label: 'After shift start',
+        value: summary.afterShiftStartRecords ?? 0,
+        style: 'bg-light',
+      },
     ];
   }
 
   if (type === 'leave') {
     return [
-      { label: 'Total requests', value: summary.totalRequests ?? 0, style: 'bg-primary-subtle' },
-      { label: 'Approved', value: summary.approvedRequests ?? 0, style: 'bg-success-subtle' },
-      { label: 'Pending review', value: summary.pendingRequests ?? 0, style: 'bg-warning-subtle' },
-      { label: 'Rejected', value: summary.rejectedRequests ?? 0, style: 'bg-danger-subtle' },
+      {
+        label: 'Total requests',
+        value: summary.totalRequests ?? 0,
+        style: 'bg-primary-subtle',
+      },
+      {
+        label: 'Approved',
+        value: summary.approvedRequests ?? 0,
+        style: 'bg-success-subtle',
+      },
+      {
+        label: 'Pending review',
+        value: summary.pendingRequests ?? 0,
+        style: 'bg-warning-subtle',
+      },
+      {
+        label: 'Rejected',
+        value: summary.rejectedRequests ?? 0,
+        style: 'bg-danger-subtle',
+      },
     ];
   }
 
   if (type === 'overtime') {
     return [
-      { label: 'Overtime records', value: summary.totalRecords ?? 0, style: 'bg-primary-subtle' },
-      { label: 'Approved records', value: summary.approvedRecords ?? 0, style: 'bg-success-subtle' },
-      { label: 'Approved hours', value: Number(summary.totalApprovedHours ?? 0).toFixed(2), style: 'bg-light' },
+      {
+        label: 'Overtime records',
+        value: summary.totalRecords ?? 0,
+        style: 'bg-primary-subtle',
+      },
+      {
+        label: 'Approved records',
+        value: summary.approvedRecords ?? 0,
+        style: 'bg-success-subtle',
+      },
+      {
+        label: 'Approved hours',
+        value: Number(
+          summary.totalApprovedHours ?? 0
+        ).toFixed(2),
+        style: 'bg-light',
+      },
     ];
   }
 
@@ -108,30 +153,46 @@ function isValidScheduledShift(record) {
 
 function formatMinutes(value) {
   const minutes = Number(value);
-  return Number.isFinite(minutes) ? minutes.toFixed(1) : null;
+  return Number.isFinite(minutes)
+    ? minutes.toFixed(1)
+    : null;
 }
 
-// Convert a report field to human-readable text.
-// Empty database fields stay blank only in CSV exports.
 function formatCellValue(record, key, forCsv = false) {
   if (key === 'shift_display') {
     if (!record.roster_id) return 'No matching roster';
-    return `${record.shift_name || 'Unknown shift'} (${record.roster_status || 'Unknown'})`;
+
+    return `${record.shift_name || 'Unknown shift'} (${
+      record.roster_status || 'Unknown'
+    })`;
   }
 
   if (key === 'scheduled_hours') {
     if (!record.roster_id) return 'No matching roster';
-    if (!isValidScheduledShift(record)) return 'Shift needs review';
+    if (!isValidScheduledShift(record)) {
+      return 'Shift needs review';
+    }
 
-    return `${String(record.scheduled_start_time).slice(0, 5)} - ${String(record.scheduled_end_time).slice(0, 5)}`;
+    return `${String(
+      record.scheduled_start_time
+    ).slice(0, 5)} - ${String(
+      record.scheduled_end_time
+    ).slice(0, 5)}`;
   }
 
   if (key === 'arrival_review') {
     if (!record.roster_id) return 'No roster to compare';
-    if (!isValidScheduledShift(record)) return 'Shift needs review';
-    if (record.minutes_after_start == null) return 'Not available';
+    if (!isValidScheduledShift(record)) {
+      return 'Shift needs review';
+    }
+    if (record.minutes_after_start == null) {
+      return 'Not available';
+    }
 
-    const minutes = formatMinutes(record.minutes_after_start);
+    const minutes = formatMinutes(
+      record.minutes_after_start
+    );
+
     if (minutes === null) return 'Not available';
 
     return Number(minutes) > 0
@@ -149,10 +210,17 @@ function formatCellValue(record, key, forCsv = false) {
     }
 
     if (!record.roster_id) return 'No roster to compare';
-    if (!isValidScheduledShift(record)) return 'Shift needs review';
-    if (record.minutes_before_end == null) return 'Not available';
+    if (!isValidScheduledShift(record)) {
+      return 'Shift needs review';
+    }
+    if (record.minutes_before_end == null) {
+      return 'Not available';
+    }
 
-    const minutes = formatMinutes(record.minutes_before_end);
+    const minutes = formatMinutes(
+      record.minutes_before_end
+    );
+
     if (minutes === null) return 'Not available';
 
     return Number(minutes) > 0
@@ -162,20 +230,34 @@ function formatCellValue(record, key, forCsv = false) {
 
   const value = record[key];
 
-  if (value === null || value === undefined || value === '') {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
     if (forCsv) return '';
-    if (key === 'check_out_time') return 'Not checked out';
+    if (key === 'check_out_time') {
+      return 'Not checked out';
+    }
 
-    if (key === 'reviewed_by_name' || key === 'reviewed_at') {
+    if (
+      key === 'reviewed_by_name' ||
+      key === 'reviewed_at'
+    ) {
       return 'Not reviewed';
     }
 
     return '-';
   }
 
-  if (key === 'hours_worked') return Number(value).toFixed(2);
+  if (key === 'hours_worked') {
+    return Number(value).toFixed(2);
+  }
 
-  if (key === 'check_in_time' || key === 'check_out_time') {
+  if (
+    key === 'check_in_time' ||
+    key === 'check_out_time'
+  ) {
     return String(value).slice(0, 5);
   }
 
@@ -183,19 +265,25 @@ function formatCellValue(record, key, forCsv = false) {
 }
 
 function reportRecordLabel(type, record) {
-  if (type === 'attendance') return `AT-${record.attendance_id}`;
-
-  if (type === 'leave') {
-    return `LR-${String(record.leave_request_id).padStart(4, '0')}`;
+  if (type === 'attendance') {
+    return `AT-${record.attendance_id}`;
   }
 
-  return `OT-${String(record.overtime_id).padStart(4, '0')}`;
+  if (type === 'leave') {
+    return `LR-${String(
+      record.leave_request_id
+    ).padStart(4, '0')}`;
+  }
+
+  return `OT-${String(
+    record.overtime_id
+  ).padStart(4, '0')}`;
 }
 
 function escapeCsvCell(value) {
   let text = String(value ?? '');
 
-  if (/^\s*[=+\-@]/.test(text)) {
+  if (/^\s*[=+@-]/.test(text)) {
     text = `'${text}`;
   }
 
@@ -239,7 +327,11 @@ function escapeHtml(value) {
 
 function buildPrintableHtml(data) {
   const type = data.reportType;
-  const selectedType = reportTypes.find((item) => item.id === type);
+
+  const selectedType = reportTypes.find(
+    (item) => item.id === type
+  );
+
   const columns = reportColumns[type] || [];
   const cards = getSummaryCards(type, data.summary);
 
@@ -270,7 +362,10 @@ function buildPrintableHtml(data) {
 
   let breakdown = '';
 
-  if (type === 'leave' && data.summary.byLeaveType?.length > 0) {
+  if (
+    type === 'leave' &&
+    data.summary.byLeaveType?.length > 0
+  ) {
     breakdown = `
       <h2>Leave requests by type</h2>
       <table>
@@ -292,7 +387,10 @@ function buildPrintableHtml(data) {
     `;
   }
 
-  if (type === 'overtime' && data.summary.byEmployee?.length > 0) {
+  if (
+    type === 'overtime' &&
+    data.summary.byEmployee?.length > 0
+  ) {
     breakdown = `
       <h2>Approved overtime by employee</h2>
       <table>
@@ -308,7 +406,9 @@ function buildPrintableHtml(data) {
             <tr>
               <td>${escapeHtml(item.fullName)}</td>
               <td>${escapeHtml(item.employeeId)}</td>
-              <td>${escapeHtml(Number(item.approvedHours).toFixed(2))}</td>
+              <td>${escapeHtml(
+                Number(item.approvedHours).toFixed(2)
+              )}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -321,7 +421,6 @@ function buildPrintableHtml(data) {
 <head>
   <meta charset="UTF-8" />
   <title>PharmaShift - ${escapeHtml(selectedType.label)}</title>
-
 <style>
   @page {
     size: A4 landscape;
@@ -343,7 +442,6 @@ function buildPrintableHtml(data) {
     print-color-adjust: exact;
   }
 
-  /* Report header */
   .report-header {
     display: flex;
     align-items: center;
@@ -392,7 +490,6 @@ function buildPrintableHtml(data) {
     color: #263445;
   }
 
-  /* Summary cards */
   .summary {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -421,7 +518,6 @@ function buildPrintableHtml(data) {
     margin-top: 4px;
   }
 
-  /* Report tables */
   table {
     width: 100%;
     border-collapse: collapse;
@@ -456,10 +552,7 @@ function buildPrintableHtml(data) {
     page-break-inside: avoid;
   }
 </style>
-
 </head>
-
-
 <body>
   <header class="report-header">
     <img
@@ -538,7 +631,12 @@ function Reports() {
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if (!isManager || generating || invalidRange || missingDates) {
+    if (
+      !isManager ||
+      generating ||
+      invalidRange ||
+      missingDates
+    ) {
       return;
     }
 
@@ -640,30 +738,32 @@ function Reports() {
       printWindow.document.close();
       printWindow.opener = null;
 
+      const logo = printWindow.document.querySelector(
+        '.report-logo'
+      );
 
-const logo = printWindow.document.querySelector('.report-logo');
+      if (!logo) {
+        throw new Error(
+          'Pharmacy logo not found in the report.'
+        );
+      }
 
-if (!logo) {
-  throw new Error('Pharmacy logo not found in the report.');
-}
+      logo.decode()
+        .then(() => {
+          if (!printWindow.closed) {
+            printWindow.focus();
+            printWindow.print();
+          }
+        })
+        .catch(() => {
+          setError(
+            'The pharmacy logo could not load. Please try printing again.'
+          );
 
-logo.decode()
-  .then(() => {
-    if (!printWindow.closed) {
-      printWindow.focus();
-      printWindow.print();
-    }
-  })
-  .catch(() => {
-    setError(
-      'The pharmacy logo could not load. Please try printing again.'
-    );
-
-    if (!printWindow.closed) {
-      printWindow.close();
-    }
-  });
-
+          if (!printWindow.closed) {
+            printWindow.close();
+          }
+        });
     } catch (printError) {
       setError(
         'Unable to prepare the printable report. Please try again.'
@@ -676,7 +776,10 @@ logo.decode()
   if (!isManager) {
     return (
       <div className="mt-4">
-        <div className="alert alert-warning" role="alert">
+        <div
+          className="alert alert-warning"
+          role="alert"
+        >
           Reports are available only to the Owner/Manager.
         </div>
       </div>
@@ -707,7 +810,10 @@ logo.decode()
 
         <div className="row g-3 align-items-end">
           <div className="col-12 col-lg-4">
-            <label htmlFor="report-type" className="form-label">
+            <label
+              htmlFor="report-type"
+              className="form-label"
+            >
               Report type
             </label>
 
@@ -717,11 +823,17 @@ logo.decode()
               value={reportType}
               disabled={generating}
               onChange={(event) =>
-                changeOption(setReportType, event.target.value)
+                changeOption(
+                  setReportType,
+                  event.target.value
+                )
               }
             >
               {reportTypes.map((item) => (
-                <option key={item.id} value={item.id}>
+                <option
+                  key={item.id}
+                  value={item.id}
+                >
                   {item.label}
                 </option>
               ))}
@@ -729,7 +841,10 @@ logo.decode()
           </div>
 
           <div className="col-12 col-md-6 col-lg-3">
-            <label htmlFor="report-from" className="form-label">
+            <label
+              htmlFor="report-from"
+              className="form-label"
+            >
               From date
             </label>
 
@@ -740,39 +855,43 @@ logo.decode()
               value={fromDate}
               disabled={generating}
               onChange={(event) =>
-                changeOption(setFromDate, event.target.value)
+                changeOption(
+                  setFromDate,
+                  event.target.value
+                )
               }
             />
           </div>
 
           <div className="col-12 col-md-6 col-lg-3">
-            <label htmlFor="report-to" className="form-label">
+            <label
+              htmlFor="report-to"
+              className="form-label"
+            >
               To date
             </label>
 
             <input
               id="report-to"
               type="date"
-              className={`form-control${invalidRange ? ' is-invalid' : ''}`}
+              className={`form-control${
+                invalidRange ? ' is-invalid' : ''
+              }`}
               value={toDate}
               disabled={generating}
               onChange={(event) =>
-                changeOption(setToDate, event.target.value)
+                changeOption(
+                  setToDate,
+                  event.target.value
+                )
               }
               aria-invalid={invalidRange}
               aria-describedby={
-                invalidRange ? 'report-range-error' : undefined
+                invalidRange
+                  ? 'report-range-error'
+                  : undefined
               }
             />
-
-            {invalidRange && (
-              <div
-                id="report-range-error"
-                className="invalid-feedback"
-              >
-                To date cannot be before From date.
-              </div>
-            )}
           </div>
 
           <div className="col-12 col-lg-2">
@@ -791,10 +910,28 @@ logo.decode()
             </button>
           </div>
         </div>
+
+        {/* Keep the error outside the input row. */}
+        {invalidRange && (
+          <div className="row mt-1">
+            <div className="col-12 col-lg-3 offset-lg-7">
+              <div
+                id="report-range-error"
+                className="text-danger small"
+                role="alert"
+              >
+                To date cannot be before From date.
+              </div>
+            </div>
+          </div>
+        )}
       </form>
 
       {error && (
-        <div className="alert alert-danger" role="alert">
+        <div
+          className="alert alert-danger"
+          role="alert"
+        >
           {error}
         </div>
       )}
@@ -897,10 +1034,15 @@ logo.decode()
             <table className="table table-hover align-middle small">
               <thead className="table-light">
                 <tr>
-                  <th scope="col">Record ID</th>
+                  <th scope="col">
+                    Record ID
+                  </th>
 
                   {columns.map((column) => (
-                    <th scope="col" key={column.key}>
+                    <th
+                      scope="col"
+                      key={column.key}
+                    >
                       {column.label}
                     </th>
                   ))}
@@ -969,8 +1111,12 @@ logo.decode()
                   <table className="table table-sm table-bordered">
                     <thead className="table-light">
                       <tr>
-                        <th scope="col">Leave type</th>
-                        <th scope="col">Requests</th>
+                        <th scope="col">
+                          Leave type
+                        </th>
+                        <th scope="col">
+                          Requests
+                        </th>
                       </tr>
                     </thead>
 
@@ -978,8 +1124,12 @@ logo.decode()
                       {reportData.summary.byLeaveType.map(
                         (item) => (
                           <tr key={item.leaveType}>
-                            <td>{item.leaveType}</td>
-                            <td>{item.count}</td>
+                            <td>
+                              {item.leaveType}
+                            </td>
+                            <td>
+                              {item.count}
+                            </td>
                           </tr>
                         )
                       )}
@@ -1000,9 +1150,15 @@ logo.decode()
                   <table className="table table-sm table-bordered">
                     <thead className="table-light">
                       <tr>
-                        <th scope="col">Employee</th>
-                        <th scope="col">Employee ID</th>
-                        <th scope="col">Approved hours</th>
+                        <th scope="col">
+                          Employee
+                        </th>
+                        <th scope="col">
+                          Employee ID
+                        </th>
+                        <th scope="col">
+                          Approved hours
+                        </th>
                       </tr>
                     </thead>
 
@@ -1010,8 +1166,12 @@ logo.decode()
                       {reportData.summary.byEmployee.map(
                         (item) => (
                           <tr key={item.employeeId}>
-                            <td>{item.fullName}</td>
-                            <td>{item.employeeId}</td>
+                            <td>
+                              {item.fullName}
+                            </td>
+                            <td>
+                              {item.employeeId}
+                            </td>
                             <td>
                               {Number(
                                 item.approvedHours

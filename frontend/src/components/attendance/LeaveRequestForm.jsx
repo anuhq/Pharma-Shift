@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState } from 'react';
+import { getSriLankaToday } from '../../utils/sriLankaDate';
 
 function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -21,6 +22,7 @@ function LeaveRequestForm({
   initialRequest = null,
 }) {
   const isEditing = Boolean(initialRequest);
+  const today = getSriLankaToday();
 
   const [values, setValues] = useState(() => ({
     leave_type: initialRequest?.leave_type ?? '',
@@ -57,19 +59,29 @@ function LeaveRequestForm({
 
     const nextErrors = {};
     const reason = values.reason.trim();
+    const currentDate = getSriLankaToday();
 
     if (!leaveTypes.includes(values.leave_type)) {
       nextErrors.leave_type = 'Select a leave type.';
     }
 
+    // Validate the start date.
     if (!isValidDate(values.start_date)) {
       nextErrors.start_date = 'Enter a valid start date.';
+    } else if (values.start_date < currentDate) {
+      nextErrors.start_date =
+        'Leave start date cannot be in the past.';
     }
 
+    // Validate the end date.
     if (!isValidDate(values.end_date)) {
       nextErrors.end_date = 'Enter a valid end date.';
+    } else if (values.end_date < currentDate) {
+      nextErrors.end_date =
+        'Leave end date cannot be in the past.';
     }
 
+    // Check the leave date range.
     if (
       !nextErrors.start_date &&
       !nextErrors.end_date &&
@@ -93,6 +105,7 @@ function LeaveRequestForm({
       event.currentTarget.elements
         .namedItem(firstError)
         ?.focus();
+
       return;
     }
 
@@ -188,6 +201,7 @@ function LeaveRequestForm({
               id="leave-request-start"
               name="start_date"
               type="date"
+              min={today}
               required
               disabled={submitting}
               className={`form-control${
@@ -203,6 +217,10 @@ function LeaveRequestForm({
                 {errors.start_date}
               </div>
             )}
+
+            <div className="form-text">
+              Select today or a future date.
+            </div>
           </div>
 
           <div className="col-12 col-md-6">
@@ -217,6 +235,11 @@ function LeaveRequestForm({
               id="leave-request-end"
               name="end_date"
               type="date"
+              min={
+                values.start_date > today
+                  ? values.start_date
+                  : today
+              }
               required
               disabled={submitting}
               className={`form-control${
@@ -232,6 +255,10 @@ function LeaveRequestForm({
                 {errors.end_date}
               </div>
             )}
+
+            <div className="form-text">
+              End date must be on or after the start date.
+            </div>
           </div>
 
           <div className="col-12">

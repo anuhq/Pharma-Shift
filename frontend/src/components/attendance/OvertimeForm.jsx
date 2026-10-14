@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState } from 'react';
+import { getSriLankaToday } from '../../utils/sriLankaDate';
 
 function isValidDate(value) {
   if (
@@ -24,7 +25,7 @@ function isValidDate(value) {
 function isValidHours(value) {
   const text = String(value).trim();
 
-  if (!/^(0|[1-9]\d{0,2})(\.\d{1,2})?$/.test(text)) {
+  if (!/^(0|[1-8])(\.\d{1,2})?$/.test(text)) {
     return false;
   }
 
@@ -33,7 +34,7 @@ function isValidHours(value) {
   return (
     Number.isFinite(hours) &&
     hours > 0 &&
-    hours <= 999.99
+    hours <= 8
   );
 }
 
@@ -44,6 +45,7 @@ function OvertimeForm({
   onCancel,
 }) {
   const isEditing = Boolean(record);
+  const today = getSriLankaToday();
 
   const [values, setValues] = useState({
     employee_id: record ? String(record.employee_id) : '',
@@ -87,6 +89,7 @@ function OvertimeForm({
 
     const nextErrors = {};
     const employeeId = Number(values.employee_id);
+    const currentDate = getSriLankaToday();
 
     if (
       !values.employee_id ||
@@ -97,13 +100,18 @@ function OvertimeForm({
       nextErrors.employee_id = 'Select a valid employee.';
     }
 
+    // Validate the overtime date.
     if (!isValidDate(values.overtime_date)) {
       nextErrors.overtime_date = 'Enter a valid overtime date.';
+    } else if (values.overtime_date > currentDate) {
+      nextErrors.overtime_date =
+        'Overtime date cannot be in the future.';
     }
 
+    // Validate overtime hours.
     if (!isValidHours(values.hours_worked)) {
       nextErrors.hours_worked =
-        'Enter valid hours greater than zero with up to two decimal places.';
+        'Enter hours greater than zero and up to 8, with no more than two decimal places.';
     }
 
     setErrors(nextErrors);
@@ -153,12 +161,6 @@ function OvertimeForm({
           ? 'Edit overtime record'
           : 'Add overtime record'}
       </h4>
-
-      <p className="text-secondary small mb-3">
-        {isEditing
-          ? 'Review the overtime details before saving your changes.'
-          : 'Verify the overtime details before saving. New records will be saved as Approved.'}
-      </p>
 
       <form onSubmit={handleSubmit} noValidate>
         {Object.values(errors).some(Boolean) && (
@@ -231,6 +233,7 @@ function OvertimeForm({
               id="overtime-entry-date"
               name="overtime_date"
               type="date"
+              max={today}
               required
               disabled={saving}
               className={`form-control${
@@ -246,6 +249,7 @@ function OvertimeForm({
                 {errors.overtime_date}
               </div>
             )}
+
           </div>
 
           <div className="col-12 col-md-6">
@@ -261,7 +265,7 @@ function OvertimeForm({
               name="hours_worked"
               type="number"
               min="0.01"
-              max="999.99"
+              max="8"
               step="0.01"
               required
               disabled={saving}
@@ -280,8 +284,8 @@ function OvertimeForm({
             )}
 
             <div className="form-text">
-              Enter decimal hours. For example, 1.5 represents
-              1 hour and 30 minutes.
+              Maximum 8 overtime hours per employee per day.
+              For example, 1.5 means 1 hour and 30 minutes.
             </div>
           </div>
         </div>

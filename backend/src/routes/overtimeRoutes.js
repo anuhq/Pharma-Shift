@@ -14,6 +14,8 @@ const {
   deleteOvertimeRecord,
 } = require('../models/overtimeModel');
 
+const { getSriLankaToday } = require('../utils/sriLankaDate');
+
 const router = express.Router();
 
 const staffRoles = new Set([
@@ -42,7 +44,7 @@ function isValidDate(value) {
   );
 }
 
-// Validate overtime hours for DECIMAL(5,2).
+// Validate overtime hours.
 function isValidHours(value) {
   if (
     typeof value !== 'number' &&
@@ -53,7 +55,7 @@ function isValidHours(value) {
 
   const text = String(value).trim();
 
-  if (!/^(0|[1-9]\d{0,2})(\.\d{1,2})?$/.test(text)) {
+  if (!/^(0|[1-8])(\.\d{1,2})?$/.test(text)) {
     return false;
   }
 
@@ -62,7 +64,7 @@ function isValidHours(value) {
   return (
     Number.isFinite(hours) &&
     hours > 0 &&
-    hours <= 999.99
+    hours <= 8
   );
 }
 
@@ -78,9 +80,7 @@ function isValidRecordId(value) {
   return Number.isSafeInteger(Number(value));
 }
 
-// GET /api/overtime
-// Managers see all records.
-// Staff see only their own records.
+// GET - Retrieve overtime records.
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const roleName = req.currentUser.role_name;
@@ -108,8 +108,7 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-// GET /api/overtime/eligible-employees
-// Only managers can retrieve eligible employees.
+// GET - Retrieve eligible employees.
 router.get(
   '/eligible-employees',
   requireAuth,
@@ -127,8 +126,7 @@ router.get(
   }
 );
 
-// POST /api/overtime
-// Only managers can create Approved overtime.
+// POST - Create Approved overtime.
 router.post(
   '/',
   requireAuth,
@@ -154,21 +152,35 @@ router.post(
         });
       }
 
-      if (!isValidHours(hoursWorked)) {
+      // Future overtime dates are not allowed.
+      if (overtimeDate > getSriLankaToday()) {
         return res.status(400).json({
-          message:
-            'Enter valid overtime hours greater than zero, with no more than two decimal places.',
+          message: 'Overtime date cannot be in the future.',
         });
       }
 
-      // The manager verifies hours before creating the record.
-      // Ignore any status supplied by the browser.
+      if (!isValidHours(hoursWorked)) {
+        return res.status(400).json({
+          message:
+            'Enter overtime hours greater than zero and up to 8, with no more than two decimal places.',
+        });
+      }
+
+      // The manager verifies overtime before saving.
       const record = await createOvertimeRecord({
         employee_id: employeeId,
         overtime_date: overtimeDate,
         hours_worked: Number(hoursWorked),
         status: 'Approved',
       });
+
+      // Check the combined daily overtime limit.
+      if (record?.outcome === 'daily_limit_exceeded') {
+        return res.status(409).json({
+          message:
+            'Total overtime cannot exceed 8 hours per employee per day.',
+        });
+      }
 
       if (!record) {
         return res.status(400).json({
@@ -188,8 +200,7 @@ router.post(
   }
 );
 
-// PATCH /api/overtime/:overtimeId
-// Only the Owner/Manager can edit Approved overtime records.
+// PATCH - Edit an Approved overtime record.
 router.patch(
   '/:overtimeId',
   requireAuth,
@@ -208,7 +219,6 @@ router.patch(
       const overtimeDate = req.body?.overtime_date;
       const hoursWorked = req.body?.hours_worked;
 
-      // Validate the selected employee.
       if (
         !Number.isSafeInteger(employeeId) ||
         employeeId < 1
@@ -218,22 +228,26 @@ router.patch(
         });
       }
 
-      // Validate the date.
       if (!isValidDate(overtimeDate)) {
         return res.status(400).json({
           message: 'Enter a valid overtime date.',
         });
       }
 
-      // Validate hours worked.
-      if (!isValidHours(hoursWorked)) {
+      // Future overtime dates are not allowed.
+      if (overtimeDate > getSriLankaToday()) {
         return res.status(400).json({
-          message:
-            'Enter valid overtime hours greater than zero, with no more than two decimal places.',
+          message: 'Overtime date cannot be in the future.',
         });
       }
 
-      // Update through the database model.
+      if (!isValidHours(hoursWorked)) {
+        return res.status(400).json({
+          message:
+            'Enter overtime hours greater than zero and up to 8, with no more than two decimal places.',
+        });
+      }
+
       const record = await updateOvertimeRecord(
         Number(overtimeId),
         {
@@ -242,6 +256,14 @@ router.patch(
           hours_worked: Number(hoursWorked),
         }
       );
+
+      // Check the combined daily overtime limit.
+      if (record?.outcome === 'daily_limit_exceeded') {
+        return res.status(409).json({
+          message:
+            'Total overtime cannot exceed 8 hours per employee per day.',
+        });
+      }
 
       if (!record) {
         return res.status(409).json({
@@ -260,9 +282,7 @@ router.patch(
   }
 );
 
-// DELETE /api/overtime/:overtimeId
-// Permanently delete an overtime record.
-// Only the Owner/Manager has permission.
+// DELETE - Remove an overtime record.
 router.delete(
   '/:overtimeId',
   requireAuth,

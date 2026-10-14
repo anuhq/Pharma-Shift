@@ -18,8 +18,7 @@ const allowedReportTypes = new Set([
   'overtime',
 ]);
 
-// Check that a date is a real calendar date
-// written in YYYY-MM-DD format.
+// Validate a real date in YYYY-MM-DD format.
 function isValidDate(value) {
   if (
     typeof value !== 'string' ||
@@ -44,9 +43,6 @@ function isValidDate(value) {
 
 // GET /api/reports
 // Only Owner/Manager can generate reports.
-//
-// Example:
-// /api/reports?type=attendance&from=2026-09-01&to=2026-10-12
 router.get(
   '/',
   requireAuth,
@@ -57,7 +53,7 @@ router.get(
       const fromDate = req.query.from;
       const toDate = req.query.to;
 
-      // Validate the selected report type.
+      // Validate the report type.
       if (
         typeof reportType !== 'string' ||
         !allowedReportTypes.has(reportType)
@@ -68,7 +64,7 @@ router.get(
         });
       }
 
-      // Require valid start and end dates.
+      // Require valid From and To dates.
       if (
         !isValidDate(fromDate) ||
         !isValidDate(toDate)
@@ -87,7 +83,7 @@ router.get(
         });
       }
 
-      // Generate the report directly from MySQL.
+      // Generate the report from MySQL.
       const report = await getReportData(
         reportType,
         fromDate,
