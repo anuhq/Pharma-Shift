@@ -14,6 +14,7 @@ const {
   reviewPendingLeaveRequest,
 } = require('../models/leaveModel');
 
+const { getSriLankaToday } = require('../utils/sriLankaDate');
 const router = express.Router();
 
 const leaveTypes = new Set([
@@ -93,6 +94,11 @@ router.post(
         });
       }
 
+      if (startDate < getSriLankaToday()) {
+       return res.status(400).json({
+         message: 'Leave start date cannot be in the past.',
+         });
+      }
       if (endDate < startDate) {
         return res.status(400).json({
           message: 'End date cannot be before start date.',

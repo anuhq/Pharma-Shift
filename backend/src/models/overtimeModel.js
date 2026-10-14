@@ -1,7 +1,6 @@
 
 const pool = require('../config/db');
 
-// Shared query for retrieving overtime records.
 const OVERTIME_SELECT = `
   SELECT
     o.overtime_id,
@@ -18,7 +17,7 @@ const OVERTIME_SELECT = `
     ON r.role_id = e.role_id
 `;
 
-// READ: Retrieve overtime records.
+// Retrieve overtime records.
 async function listOvertimeRecords(employeeId = null) {
   const params = [];
   let sql = OVERTIME_SELECT;
@@ -38,7 +37,7 @@ async function listOvertimeRecords(employeeId = null) {
   }));
 }
 
-// READ: Retrieve active staff eligible for overtime.
+// Retrieve employees eligible for overtime.
 async function listEligibleOvertimeEmployees() {
   const [rows] = await pool.execute(
     `SELECT
@@ -59,39 +58,90 @@ async function listEligibleOvertimeEmployees() {
   return rows;
 }
 
-// CREATE: Save overtime for an eligible employee.
-async function createOvertimeRecord(data) {
-  const [result] = await pool.execute(
-    `INSERT INTO overtime
-       (employee_id, overtime_date, hours_worked, status)
-     SELECT
-       e.employee_id, ?, ?, ?
-     FROM employee AS e
-     INNER JOIN \`role\` AS r
-       ON r.role_id = e.role_id
-     WHERE e.employee_id = ?
-       AND LOWER(e.status) = 'active'
-       AND r.role_name IN (
-         'Pharmacist',
-         'Pharmacy Assistant'
-       )`,
+// Lock employee rows before updating overtime records.
+async function lockEmployees(connection, employeeIds) {
+  const ids = [...new Set(employeeIds)].sort((a, b) => a - b);
+  const employees = new Map();
+
+  for (const employeeId of ids) {
+    const [rows] = await connection.execute(
+      `SELECT employee_id, role_id, status
+       FROM employee
+       WHERE employee_id = ?
+       FOR UPDATE`,
+      [employeeId]
+    );
+
+    if (rows.length > 0) {
+      employees.set(employeeId, rows[0]);
+    }
+  }
+
+  return employees;
+}
+
+// Check whether an employee is eligible for overtime.
+async function isEligibleEmployee(connection, employee) {
+  if (
+    !employee ||
+    String(employee.status).toLowerCase() !== 'active'
+  ) {
+    return false;
+  }
+
+  const [roles] = await connection.execute(
+    `SELECT role_name
+     FROM \`role\`
+     WHERE role_id = ?`,
+    [employee.role_id]
+  );
+
+  return ['Pharmacist', 'Pharmacy Assistant'].includes(
+    roles[0]?.role_name
+  );
+}
+
+// Check the combined overtime hours for one employee on one date.
+async function exceedsDailyLimit(
+  connection,
+  employeeId,
+  overtimeDate,
+  hoursWorked,
+  excludeId = 0
+) {
+  const [rows] = await connection.execute(
+    `SELECT COALESCE(SUM(hours_worked), 0) AS total_hours
+     FROM overtime
+     WHERE employee_id = ?
+       AND overtime_date = ?
+       AND status = 'Approved'
+       AND overtime_id <> ?`,
     [
-      data.overtime_date,
-      data.hours_worked,
-      data.status,
-      data.employee_id,
+      employeeId,
+      overtimeDate,
+      excludeId,
     ]
   );
 
-  if (result.affectedRows !== 1) {
-    return null;
-  }
+  // Calculate using hundredths to avoid decimal rounding errors.
+  const existingHours = Math.round(
+    Number(rows[0].total_hours) * 100
+  );
 
-  const [rows] = await pool.execute(
+  const newHours = Math.round(
+    Number(hoursWorked) * 100
+  );
+
+  return existingHours + newHours > 800;
+}
+
+// Retrieve one saved overtime record.
+async function getOvertimeById(connection, overtimeId) {
+  const [rows] = await connection.execute(
     `${OVERTIME_SELECT}
      WHERE o.overtime_id = ?
      LIMIT 1`,
-    [result.insertId]
+    [overtimeId]
   );
 
   if (!rows[0]) {
@@ -106,61 +156,154 @@ async function createOvertimeRecord(data) {
   };
 }
 
-// UPDATE: Edit an existing Approved overtime record.
-async function updateOvertimeRecord(overtimeId, data) {
+// CREATE - Save Approved overtime within the daily limit.
+async function createOvertimeRecord(data) {
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
 
-    // Lock the record while checking its status.
-    const [existingRows] = await connection.execute(
-      `SELECT overtime_id, status
+    // Lock the selected employee.
+    const employees = await lockEmployees(
+      connection,
+      [data.employee_id]
+    );
+
+    const eligible = await isEligibleEmployee(
+      connection,
+      employees.get(data.employee_id)
+    );
+
+    if (!eligible) {
+      await connection.rollback();
+      return null;
+    }
+
+    // Check all existing Approved overtime for the same day.
+    const limitExceeded = await exceedsDailyLimit(
+      connection,
+      data.employee_id,
+      data.overtime_date,
+      data.hours_worked
+    );
+
+    if (limitExceeded) {
+      await connection.rollback();
+
+      return {
+        outcome: 'daily_limit_exceeded',
+      };
+    }
+
+    const [result] = await connection.execute(
+      `INSERT INTO overtime
+         (employee_id, overtime_date, hours_worked, status)
+       VALUES (?, ?, ?, 'Approved')`,
+      [
+        data.employee_id,
+        data.overtime_date,
+        data.hours_worked,
+      ]
+    );
+
+    const record = await getOvertimeById(
+      connection,
+      result.insertId
+    );
+
+    await connection.commit();
+
+    return record;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+// UPDATE - Edit an Approved overtime record.
+async function updateOvertimeRecord(overtimeId, data) {
+  // Identify the current employee before acquiring locks.
+  const [previous] = await pool.execute(
+    `SELECT employee_id
+     FROM overtime
+     WHERE overtime_id = ?
+     LIMIT 1`,
+    [overtimeId]
+  );
+
+  if (previous.length === 0) {
+    return null;
+  }
+
+  const previousEmployeeId = previous[0].employee_id;
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    // Lock both employees in a consistent order.
+    const employees = await lockEmployees(
+      connection,
+      [
+        previousEmployeeId,
+        data.employee_id,
+      ]
+    );
+
+    // Lock and recheck the overtime record.
+    const [existing] = await connection.execute(
+      `SELECT employee_id, status
        FROM overtime
        WHERE overtime_id = ?
        FOR UPDATE`,
       [overtimeId]
     );
 
-    // Do not edit deleted, missing or non-Approved records.
     if (
-      existingRows.length === 0 ||
-      existingRows[0].status !== 'Approved'
+      existing.length === 0 ||
+      existing[0].status !== 'Approved' ||
+      existing[0].employee_id !== previousEmployeeId
     ) {
       await connection.rollback();
       return null;
     }
 
     // Confirm the selected employee is eligible.
-    const [eligibleRows] = await connection.execute(
-      `SELECT e.employee_id
-       FROM employee AS e
-       INNER JOIN \`role\` AS r
-         ON r.role_id = e.role_id
-       WHERE e.employee_id = ?
-         AND LOWER(e.status) = 'active'
-         AND r.role_name IN (
-           'Pharmacist',
-           'Pharmacy Assistant'
-         )
-       LIMIT 1
-       FOR SHARE`,
-      [data.employee_id]
+    const eligible = await isEligibleEmployee(
+      connection,
+      employees.get(data.employee_id)
     );
 
-    if (eligibleRows.length === 0) {
+    if (!eligible) {
       await connection.rollback();
       return null;
     }
 
-    // Update the employee, date and hours.
+    // Exclude the current record when checking the updated total.
+    const limitExceeded = await exceedsDailyLimit(
+      connection,
+      data.employee_id,
+      data.overtime_date,
+      data.hours_worked,
+      overtimeId
+    );
+
+    if (limitExceeded) {
+      await connection.rollback();
+
+      return {
+        outcome: 'daily_limit_exceeded',
+      };
+    }
+
     // Preserve the existing Approved status.
     await connection.execute(
       `UPDATE overtime
-       SET
-         employee_id = ?,
-         overtime_date = ?,
-         hours_worked = ?
+       SET employee_id = ?,
+           overtime_date = ?,
+           hours_worked = ?
        WHERE overtime_id = ?
          AND status = 'Approved'`,
       [
@@ -171,26 +314,14 @@ async function updateOvertimeRecord(overtimeId, data) {
       ]
     );
 
-    // Read the updated record.
-    const [rows] = await connection.execute(
-      `${OVERTIME_SELECT}
-       WHERE o.overtime_id = ?
-       LIMIT 1`,
-      [overtimeId]
+    const record = await getOvertimeById(
+      connection,
+      overtimeId
     );
 
     await connection.commit();
 
-    if (!rows[0]) {
-      throw new Error(
-        'Unable to retrieve the updated overtime record.'
-      );
-    }
-
-    return {
-      ...rows[0],
-      hours_worked: Number(rows[0].hours_worked),
-    };
+    return record;
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -199,7 +330,7 @@ async function updateOvertimeRecord(overtimeId, data) {
   }
 }
 
-// DELETE: Permanently remove an overtime record.
+// DELETE - Permanently remove an overtime record.
 async function deleteOvertimeRecord(overtimeId) {
   const [result] = await pool.execute(
     `DELETE FROM overtime
