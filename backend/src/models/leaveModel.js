@@ -121,7 +121,6 @@ async function deletePendingLeaveRequest(
   leaveRequestId,
   employeeId
 ) {
-  // Check ownership and Pending status in the DELETE query.
   const [result] = await pool.execute(
     `DELETE FROM leave_request
      WHERE leave_request_id = ?
@@ -136,7 +135,6 @@ async function deletePendingLeaveRequest(
     };
   }
 
-  // Determine whether the request is missing or not Pending.
   const [existing] = await pool.execute(
     `SELECT status
      FROM leave_request
@@ -164,63 +162,159 @@ async function reviewPendingLeaveRequest(
   decision,
   reviewNote
 ) {
-  // Only Pending requests belonging to other employees
-  // can be approved or rejected.
-  const [result] = await pool.execute(
-    `UPDATE leave_request
-     SET status = ?,
-         reviewed_by_employee_id = ?,
-         reviewed_at = NOW(),
-         review_note = ?
-     WHERE leave_request_id = ?
-       AND status = 'Pending'
-       AND employee_id <> ?`,
-    [
-      decision,
-      managerEmployeeId,
-      reviewNote,
-      leaveRequestId,
-      managerEmployeeId,
-    ]
-  );
-
-  if (result.affectedRows === 1) {
-    const [rows] = await pool.execute(
-      `${LEAVE_SELECT}
-       WHERE lr.leave_request_id = ?
-       LIMIT 1`,
-      [leaveRequestId]
-    );
-
-    return {
-      outcome: 'reviewed',
-      request: rows[0],
-    };
-  }
-
-  const [existing] = await pool.execute(
-    `SELECT employee_id, status
+  // Identify the employee before acquiring the shared lock.
+  const [requests] = await pool.execute(
+    `SELECT employee_id
      FROM leave_request
      WHERE leave_request_id = ?
      LIMIT 1`,
     [leaveRequestId]
   );
 
-  if (existing.length === 0) {
+  if (requests.length === 0) {
     return {
       outcome: 'not_found',
     };
   }
 
-  if (existing[0].employee_id === managerEmployeeId) {
-    return {
-      outcome: 'self_review',
-    };
-  }
+  const employeeId = requests[0].employee_id;
+  const connection = await pool.getConnection();
 
-  return {
-    outcome: 'not_pending',
-  };
+  try {
+    await connection.beginTransaction();
+
+    // Lock the employee before checking leave and roster records.
+    const [employees] = await connection.execute(
+      `SELECT employee_id
+       FROM employee
+       WHERE employee_id = ?
+       FOR UPDATE`,
+      [employeeId]
+    );
+
+    if (employees.length === 0) {
+      await connection.rollback();
+
+      return {
+        outcome: 'not_found',
+      };
+    }
+
+    // Lock and recheck the leave request.
+    const [existing] = await connection.execute(
+      `SELECT
+         employee_id,
+         status,
+         DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
+         DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date
+       FROM leave_request
+       WHERE leave_request_id = ?
+       FOR UPDATE`,
+      [leaveRequestId]
+    );
+
+    if (
+      existing.length === 0 ||
+      existing[0].employee_id !== employeeId
+    ) {
+      await connection.rollback();
+
+      return {
+        outcome: 'not_found',
+      };
+    }
+
+    // Managers cannot review their own leave requests.
+    if (employeeId === Number(managerEmployeeId)) {
+      await connection.rollback();
+
+      return {
+        outcome: 'self_review',
+      };
+    }
+
+    // Only Pending requests can be reviewed.
+    if (existing[0].status !== 'Pending') {
+      await connection.rollback();
+
+      return {
+        outcome: 'not_pending',
+      };
+    }
+
+    // Approved leave cannot overlap a Scheduled shift.
+    if (decision === 'Approved') {
+      const [conflicts] = await connection.execute(
+        `SELECT roster_id
+         FROM shift_roster
+         WHERE employee_id = ?
+           AND status = 'Scheduled'
+           AND shift_date BETWEEN ? AND ?
+            LIMIT 1
+            FOR UPDATE`,
+        [
+          employeeId,
+          existing[0].start_date,
+          existing[0].end_date,
+        ]
+      );
+
+      if (conflicts.length > 0) {
+        await connection.rollback();
+
+        return {
+          outcome: 'roster_conflict',
+        };
+      }
+    }
+
+    // Save the Manager's decision.
+    const [result] = await connection.execute(
+      `UPDATE leave_request
+       SET status = ?,
+           reviewed_by_employee_id = ?,
+           reviewed_at = NOW(),
+           review_note = ?
+       WHERE leave_request_id = ?
+         AND status = 'Pending'
+         AND employee_id <> ?`,
+      [
+        decision,
+        managerEmployeeId,
+        reviewNote,
+        leaveRequestId,
+        managerEmployeeId,
+      ]
+    );
+
+    if (result.affectedRows !== 1) {
+      await connection.rollback();
+
+      return {
+        outcome: 'not_pending',
+      };
+    }
+
+    // Retrieve the updated leave request.
+    const [rows] = await connection.execute(
+      `${LEAVE_SELECT}
+       WHERE lr.leave_request_id = ?
+       LIMIT 1`,
+      [leaveRequestId]
+    );
+
+    await connection.commit();
+
+    return {
+      outcome: 'reviewed',
+      request: rows[0],
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 module.exports = {
