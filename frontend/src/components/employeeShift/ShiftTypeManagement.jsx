@@ -131,8 +131,8 @@ export default function ShiftTypeManagement() {
     setError('');
     setSuccess('');
 
-    if (form.start_time === form.end_time) {
-      setError('Start time and end time cannot be the same.');
+    if (form.end_time <= form.start_time) {
+      setError('End time must be later than start time.');
       return;
     }
 
