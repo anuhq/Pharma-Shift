@@ -2,6 +2,11 @@ import { API_BASE_URL } from '../api/config';
 import { useCallback, useEffect, useState } from 'react';
 import Investigations from './Investigations';
 import CorrectiveActions from './CorrectiveActions';
+import IncidentFollowUp from './IncidentFollowUp';
+import RepeatedIncidentWarnings from './RepeatedIncidentWarnings';
+import IncidentReports from './IncidentReports';
+import StaffIncidentReport from './StaffIncidentReport';
+import { useAuth } from '../auth/useAuth';
 
 
 
@@ -33,7 +38,7 @@ async function requestJson(url, options = {}) {
   return data;
 }
 
-function IncidentCorrectiveAction() {
+function ManagerIncidentManagement() {
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [incidents, setIncidents] = useState([]);
@@ -43,6 +48,15 @@ function IncidentCorrectiveAction() {
 
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [editingIncidentId, setEditingIncidentId] = useState(null);
+  const [categorySearch, setCategorySearch] = useState('');
+  const [deletingCategoryId, setDeletingCategoryId] = useState(null);
+  const [deletingIncidentId, setDeletingIncidentId] = useState(null);
+  const [incidentSearch, setIncidentSearch] = useState('');
+  const [incidentEmployeeFilter, setIncidentEmployeeFilter] = useState('');
+  const [incidentCategoryFilter, setIncidentCategoryFilter] = useState('');
+  const [incidentStatusFilter, setIncidentStatusFilter] = useState('');
+  const [incidentFromDate, setIncidentFromDate] = useState('');
+  const [incidentToDate, setIncidentToDate] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [savingCategory, setSavingCategory] = useState(false);
@@ -170,6 +184,117 @@ function IncidentCorrectiveAction() {
     }
   }
 
+  async function deleteCategory(category) {
+    if (
+      !window.confirm(
+        `Delete category "${category.category_name}"? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setDeletingCategoryId(category.category_id);
+    setError('');
+    setMessage('');
+
+    try {
+      await requestJson(
+        `${API_BASE_URL}/api/incident-categories/${category.category_id}`,
+        { method: 'DELETE' },
+      );
+
+      if (editingCategoryId === category.category_id) {
+        resetCategoryForm();
+      }
+
+      setIncidentForm((current) =>
+        current.category_id === String(category.category_id)
+          ? { ...current, category_id: '' }
+          : current,
+      );
+
+      await loadData();
+      setMessage('Category deleted successfully.');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setDeletingCategoryId(null);
+    }
+  }
+
+  const searchText = categorySearch.trim().toLowerCase();
+  const visibleCategories = categories.filter((category) =>
+    [category.category_name, category.severity_level, category.description || '']
+      .some((value) => value.toLowerCase().includes(searchText)),
+  );
+
+  async function deleteIncident(incident) {
+    if (
+      !window.confirm(
+        `Delete incident #${incident.incident_id} for ${incident.full_name}? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setDeletingIncidentId(incident.incident_id);
+    setError('');
+    setMessage('');
+
+    try {
+      await requestJson(
+        `${API_BASE_URL}/api/incidents/${incident.incident_id}`,
+        { method: 'DELETE' },
+      );
+      if (editingIncidentId === incident.incident_id) {
+        resetIncidentForm();
+      }
+      await loadData();
+      setMessage('Incident deleted successfully.');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setDeletingIncidentId(null);
+    }
+  }
+
+  const invalidIncidentDateRange = Boolean(
+    incidentFromDate && incidentToDate && incidentFromDate > incidentToDate,
+  );
+  const incidentStatuses = [...new Set(incidents.map((incident) => incident.status))]
+    .filter(Boolean)
+    .sort();
+  const visibleIncidents = incidents.filter((incident) => {
+    if (invalidIncidentDateRange) return false;
+
+    const search = incidentSearch.trim().toLowerCase();
+    const matchesSearch = [
+      String(incident.incident_id),
+      incident.full_name,
+      incident.category_name,
+      incident.description,
+      incident.status,
+    ].some((value) => String(value).toLowerCase().includes(search));
+
+    return (
+      matchesSearch &&
+      (!incidentEmployeeFilter || String(incident.employee_id) === incidentEmployeeFilter) &&
+      (!incidentCategoryFilter || String(incident.category_id) === incidentCategoryFilter) &&
+      (!incidentStatusFilter || incident.status === incidentStatusFilter) &&
+      (!incidentFromDate || incident.incident_date >= incidentFromDate) &&
+      (!incidentToDate || incident.incident_date <= incidentToDate)
+    );
+  });
+
+  function resetIncidentFilters() {
+    setIncidentSearch('');
+    setIncidentEmployeeFilter('');
+    setIncidentCategoryFilter('');
+    setIncidentStatusFilter('');
+    setIncidentFromDate('');
+    setIncidentToDate('');
+  }
+
   async function submitIncident(event) {
     event.preventDefault();
     setSavingIncident(true);
@@ -229,6 +354,8 @@ function IncidentCorrectiveAction() {
           {message}
         </div>
       )}
+
+      <RepeatedIncidentWarnings employees={employees} categories={categories} />
 
       <div className="row g-4">
         <div className="col-12 col-lg-5">
@@ -327,6 +454,18 @@ function IncidentCorrectiveAction() {
             <div className="card-body">
               <h4 className="mb-3">Incident Categories</h4>
 
+              <label className="form-label" htmlFor="category_search">
+                Search categories
+              </label>
+              <input
+                id="category_search"
+                type="search"
+                className="form-control mb-3"
+                placeholder="Search name, severity or description"
+                value={categorySearch}
+                onChange={(event) => setCategorySearch(event.target.value)}
+              />
+
               {loading ? (
                 <p className="text-muted">Loading...</p>
               ) : (
@@ -337,24 +476,45 @@ function IncidentCorrectiveAction() {
                         <th>Name</th>
                         <th>Severity</th>
                         <th>Description</th>
-                        <th>Action</th>
+                        <th>Linked incidents</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {categories.map((category) => (
+                      {visibleCategories.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="text-muted text-center">
+                            No matching categories found.
+                          </td>
+                        </tr>
+                      )}
+                      {visibleCategories.map((category) => (
                         <tr key={category.category_id}>
                           <td>{category.category_name}</td>
                           <td>{category.severity_level}</td>
                           <td>{category.description || '-'}</td>
+                          <td>{category.incident_count || 0}</td>
                           <td>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-secondary"
-                              onClick={() => editCategory(category)}
-                            >
-                              Edit
-                            </button>
+                            <div className="d-flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={() => editCategory(category)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => void deleteCategory(category)}
+                                disabled={deletingCategoryId !== null}
+                              >
+                                {deletingCategoryId === category.category_id
+                                  ? 'Deleting...'
+                                  : 'Delete'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -501,10 +661,107 @@ function IncidentCorrectiveAction() {
             <div className="card-body">
               <h4 className="mb-3">Incident Records</h4>
 
+              <label className="form-label" htmlFor="incident_search">
+                Search incidents
+              </label>
+              <input
+                id="incident_search"
+                type="search"
+                className="form-control mb-3"
+                placeholder="Search ID, employee, category or description"
+                value={incidentSearch}
+                onChange={(event) => setIncidentSearch(event.target.value)}
+              />
+              <div className="row g-2 mb-3">
+                <div className="col-12 col-md-6">
+                  <label className="form-label" htmlFor="incident_employee_filter">Employee</label>
+                  <select
+                    id="incident_employee_filter"
+                    className="form-select"
+                    value={incidentEmployeeFilter}
+                    onChange={(event) => setIncidentEmployeeFilter(event.target.value)}
+                  >
+                    <option value="">All employees</option>
+                    {employees.map((employee) => (
+                      <option key={employee.employee_id} value={employee.employee_id}>
+                        {employee.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12 col-md-6">
+                  <label className="form-label" htmlFor="incident_category_filter">Category</label>
+                  <select
+                    id="incident_category_filter"
+                    className="form-select"
+                    value={incidentCategoryFilter}
+                    onChange={(event) => setIncidentCategoryFilter(event.target.value)}
+                  >
+                    <option value="">All categories</option>
+                    {categories.map((category) => (
+                      <option key={category.category_id} value={category.category_id}>
+                        {category.category_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12 col-md-4">
+                  <label className="form-label" htmlFor="incident_status_filter">Status</label>
+                  <select
+                    id="incident_status_filter"
+                    className="form-select"
+                    value={incidentStatusFilter}
+                    onChange={(event) => setIncidentStatusFilter(event.target.value)}
+                  >
+                    <option value="">All statuses</option>
+                    {incidentStatuses.map((status) => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-6 col-md-4">
+                  <label className="form-label" htmlFor="incident_from_date">From date</label>
+                  <input
+                    id="incident_from_date"
+                    type="date"
+                    className="form-control"
+                    value={incidentFromDate}
+                    onChange={(event) => setIncidentFromDate(event.target.value)}
+                  />
+                </div>
+                <div className="col-6 col-md-4">
+                  <label className="form-label" htmlFor="incident_to_date">To date</label>
+                  <input
+                    id="incident_to_date"
+                    type="date"
+                    className="form-control"
+                    value={incidentToDate}
+                    onChange={(event) => setIncidentToDate(event.target.value)}
+                  />
+                </div>
+              </div>
+              {invalidIncidentDateRange && (
+                <p className="text-danger" role="alert">
+                  From date must not be later than To date.
+                </p>
+              )}
+              <div className="d-flex align-items-center justify-content-between mb-3 gap-2">
+                <small className="text-muted">
+                  Showing {visibleIncidents.length} of {incidents.length} incidents
+                </small>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={resetIncidentFilters}
+                >
+                  Clear filters
+                </button>
+              </div>
+
               {loading ? (
                 <p className="text-muted">Loading...</p>
-              ) : incidents.length === 0 ? (
-                <p className="text-muted">No incidents found.</p>
+              ) : visibleIncidents.length === 0 ? (
+                <p className="text-muted">No matching incidents found.</p>
               ) : (
                 <div className="table-responsive">
                   <table className="table table-bordered align-middle">
@@ -515,12 +772,13 @@ function IncidentCorrectiveAction() {
                         <th>Date</th>
                         <th>Description</th>
                         <th>Status</th>
-                        <th>Action</th>
+                        <th>Linked work</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {incidents.map((incident) => (
+                      {visibleIncidents.map((incident) => (
                         <tr key={incident.incident_id}>
                           <td>{incident.full_name}</td>
 
@@ -535,20 +793,39 @@ function IncidentCorrectiveAction() {
                           <td>{incident.incident_date}</td>
                           <td>{incident.description}</td>
                           <td>{incident.status}</td>
+                          <td>
+                            <small>
+                              {Number(incident.investigation_count || 0)} investigation(s)
+                              <br />
+                              {Number(incident.corrective_action_count || 0)} action(s)
+                            </small>
+                          </td>
 
                           <td>
-                            {String(incident.status).toLowerCase() ===
-                            'closed' ? (
-                              <span className="text-muted">Closed</span>
-                            ) : (
+                            <div className="d-flex flex-wrap gap-2">
+                              {String(incident.status).toLowerCase() === 'closed' ? (
+                                <span className="text-muted">Closed</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-secondary"
+                                  onClick={() => editIncident(incident)}
+                                >
+                                  Edit
+                                </button>
+                              )}
                               <button
                                 type="button"
-                                className="btn btn-sm btn-outline-secondary"
-                                onClick={() => editIncident(incident)}
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => void deleteIncident(incident)}
+                                disabled={deletingIncidentId !== null}
+                                title="Only Open incidents without investigations or actions can be deleted"
                               >
-                                Edit
+                                {deletingIncidentId === incident.incident_id
+                                  ? 'Deleting...'
+                                  : 'Delete'}
                               </button>
-                            )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -568,6 +845,31 @@ function IncidentCorrectiveAction() {
         employees={employees}
         onSaved={loadData}
       />
+
+      <IncidentFollowUp incidents={incidents} onSaved={loadData} />
+
+      <IncidentReports employees={employees} categories={categories} />
+    </div>
+  );
+}
+
+// Staff never mount the manager component or its privileged API requests.
+function IncidentCorrectiveAction() {
+  const { user } = useAuth();
+
+  if (user?.roleName === 'Owner/Manager') {
+    return <ManagerIncidentManagement />;
+  }
+
+  if (['Pharmacist', 'Pharmacy Assistant'].includes(user?.roleName)) {
+    return <StaffIncidentReport />;
+  }
+
+  return (
+    <div className="container-fluid py-4">
+      <div className="alert alert-warning" role="alert">
+        You do not have permission to access incident management.
+      </div>
     </div>
   );
 }
