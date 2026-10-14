@@ -322,108 +322,170 @@ function buildPrintableHtml(data) {
   <meta charset="UTF-8" />
   <title>PharmaShift - ${escapeHtml(selectedType.label)}</title>
 
-  <style>
-    @page {
-      size: A4 landscape;
-      margin: 12mm;
-    }
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
 
-    * {
-      box-sizing: border-box;
-    }
+  * {
+    box-sizing: border-box;
+  }
 
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      font-size: 11px;
-      color: #222;
-      line-height: 1.4;
-    }
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    color: #263445;
+    line-height: 1.5;
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 
-    h1 {
-      font-size: 20px;
-      margin: 0 0 5px;
-    }
+  /* Report header */
+  .report-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    border-bottom: 3px solid #17365d;
+  }
 
-    h2 {
-      font-size: 14px;
-      margin: 18px 0 8px;
-    }
+  .report-logo {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
 
-    p {
-      margin: 4px 0;
-    }
+  .report-brand {
+    font-size: 13px;
+    font-weight: bold;
+    color: #17365d;
+    margin: 0 0 3px;
+  }
 
-    header {
-      border-bottom: 2px solid #333;
-      padding-bottom: 10px;
-      margin-bottom: 14px;
-    }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 20px;
+    color: #17365d;
+  }
 
-    .summary {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-      margin: 16px 0;
-    }
+  h2 {
+    margin: 20px 0 9px;
+    font-size: 14px;
+    color: #17365d;
+  }
 
-    .summary-card {
-      border: 1px solid #ccc;
-      padding: 10px;
-      border-radius: 4px;
-      break-inside: avoid;
-    }
+  p {
+    margin: 4px 0;
+  }
 
-    .summary-label {
-      font-size: 11px;
-      color: #555;
-    }
+  .report-description {
+    color: #526477;
+  }
 
-    .summary-value {
-      font-size: 19px;
-      font-weight: bold;
-      margin-top: 4px;
-    }
+  .report-period {
+    margin-top: 7px;
+    color: #263445;
+  }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 8px;
-    }
+  /* Summary cards */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 18px 0;
+  }
 
-    th,
-    td {
-      border: 1px solid #ccc;
-      padding: 4px;
-      text-align: left;
-      vertical-align: top;
-      overflow-wrap: anywhere;
-    }
+  .summary-card {
+    background: #eef4fc;
+    border: 1px solid #cbdced;
+    border-left: 4px solid #2563a6;
+    padding: 12px;
+    border-radius: 5px;
+    break-inside: avoid;
+  }
 
-    th {
-      background: #eee;
-      font-weight: bold;
-    }
+  .summary-label {
+    font-size: 11px;
+    color: #526477;
+  }
 
-    thead {
-      display: table-header-group;
-    }
+  .summary-value {
+    font-size: 19px;
+    font-weight: bold;
+    color: #17365d;
+    margin-top: 4px;
+  }
 
-    tr {
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-  </style>
+  /* Report tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8px;
+  }
+
+  th,
+  td {
+    border: 1px solid #d3dfec;
+    padding: 6px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+
+  th {
+    background: #e4edf8;
+    color: #17365d;
+    font-weight: bold;
+  }
+
+  tbody tr:nth-child(even) {
+    background: #f7faff;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+</style>
+
 </head>
 
+
 <body>
-  <header>
-    <h1>PharmaShift - ${escapeHtml(selectedType.label)}</h1>
-    <p>${escapeHtml(selectedType.description)}</p>
-    <p>
-      <strong>Report period:</strong>
-      ${escapeHtml(data.fromDate)} to ${escapeHtml(data.toDate)}
-    </p>
+  <header class="report-header">
+    <img
+      src="${window.location.origin}/digana-pharmacy-logo.jpeg"
+      alt="Digana Pharmacy logo"
+      class="report-logo"
+      width="64"
+      height="64"
+    />
+
+    <div>
+      <p class="report-brand">Digana Pharmacy</p>
+
+      <h1>
+        PharmaShift - ${escapeHtml(selectedType.label)}
+      </h1>
+
+      <p class="report-description">
+        ${escapeHtml(selectedType.description)}
+      </p>
+
+      <p class="report-period">
+        <strong>Report period:</strong>
+        ${escapeHtml(data.fromDate)} to ${escapeHtml(data.toDate)}
+      </p>
+    </div>
   </header>
 
   <div class="summary">
@@ -578,12 +640,30 @@ function Reports() {
       printWindow.document.close();
       printWindow.opener = null;
 
-      setTimeout(() => {
-        if (!printWindow.closed) {
-          printWindow.focus();
-          printWindow.print();
-        }
-      }, 350);
+
+const logo = printWindow.document.querySelector('.report-logo');
+
+if (!logo) {
+  throw new Error('Pharmacy logo not found in the report.');
+}
+
+logo.decode()
+  .then(() => {
+    if (!printWindow.closed) {
+      printWindow.focus();
+      printWindow.print();
+    }
+  })
+  .catch(() => {
+    setError(
+      'The pharmacy logo could not load. Please try printing again.'
+    );
+
+    if (!printWindow.closed) {
+      printWindow.close();
+    }
+  });
+
     } catch (printError) {
       setError(
         'Unable to prepare the printable report. Please try again.'
