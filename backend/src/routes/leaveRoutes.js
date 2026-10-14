@@ -269,6 +269,12 @@ router.patch(
         });
       }
 
+      if (result.outcome === 'roster_conflict') {
+        return res.status(409).json({
+          message:'This employee has a Scheduled shift during the requested leave period. Resolve the roster conflict before approving leave.',
+        });
+      }
+
       if (result.outcome === 'not_pending') {
         return res.status(409).json({
           message: 'Only Pending leave requests can be reviewed.',
