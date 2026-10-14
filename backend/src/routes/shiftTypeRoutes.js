@@ -60,11 +60,11 @@ router.post('/', async (req, res) => {
     });
   }
 
-  if (startTime === endTime) {
-    return res.status(400).json({
-      message: 'Start time and end time cannot be the same.',
-    });
-  }
+    if (endTime <= startTime) {
+      return res.status(400).json({
+          message: 'End time must be later than start time.',
+      });
+    }
 
   if (!['Active', 'Inactive'].includes(status)) {
     return res.status(400).json({
@@ -144,11 +144,11 @@ router.put('/:id', async (req, res) => {
     });
   }
 
-  if (startTime === endTime) {
-    return res.status(400).json({
-      message: 'Start time and end time cannot be the same.',
-    });
-  }
+    if (endTime <= startTime) {
+      return res.status(400).json({
+        message: 'End time must be later than start time.',
+      });
+    }
 
   if (!['Active', 'Inactive'].includes(status)) {
     return res.status(400).json({

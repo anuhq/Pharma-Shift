@@ -720,8 +720,21 @@ router.post('/', async (req, res) => {
 
   try {
     connection = await pool.getConnection();
-    await connection.beginTransaction();
-    await lockEmployee(connection, employeeNumber);
+      await connection.beginTransaction();
+
+      const [[dateCheck]] = await connection.query(
+        'SELECT DATE(?) < CURDATE() AS is_past',
+        [shiftDate]
+      );
+
+      if (Number(dateCheck.is_past) === 1) {
+        await connection.rollback();
+        return res.status(400).json({
+          message: 'Shift date cannot be earlier than today.',
+        });
+      }
+
+      await lockEmployee(connection, employeeNumber);
 
     // Lock the employee and shift type during scheduling.
     // Other roster requests for this employee must wait.
@@ -949,6 +962,19 @@ router.put('/:id', async (req, res) => {
   try {
     connection = await pool.getConnection();
     await connection.beginTransaction();
+
+    const [[dateCheck]] = await connection.query(
+      'SELECT DATE(?) < CURDATE() AS is_past',
+      [shiftDate]
+    );
+
+    if (Number(dateCheck.is_past) === 1) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Shift date cannot be earlier than today.',
+      });
+    }
+
     await lockEmployee(connection, employeeNumber);
 
     // Lock the assignment being edited

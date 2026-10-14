@@ -302,10 +302,15 @@ async function handleConfirmReplacement(candidate) {
   event.preventDefault();
   if (saving) return;
 
-  setSaving(true);
   setError('');
   setSuccess('');
 
+  if (form.shift_date < todayDate) {
+    setError('Shift date cannot be earlier than today.');
+    return;
+  }
+
+  setSaving(true);
   const isEditing = editingId !== null;
 
   try {
