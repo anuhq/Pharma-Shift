@@ -1,16 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   createTaskSection,
+  updateTaskSection,
   getHandoverOptions,
   getTaskOptions,
 } from '../../services/taskApi';
 import { taskSections } from './taskSections';
 
-export default function TaskSectionModal({ section, onClose, onSaved }) {
-  const config = taskSections[section];
-  const dialogRef = useRef(null);
-  const savingRef = useRef(false);
-  const [values, setValues] = useState(() => Object.fromEntries(config.fields.map((field) => [field.name, field.initial || ''])));
+export default function TaskSectionModal({ section, record = null, onClose, onSaved }) {
+    const config = taskSections[section];
+    const dialogRef = useRef(null);
+    const savingRef = useRef(false);
+    const [values, setValues] = useState(() =>
+  Object.fromEntries(
+    config.fields.map((field) => [
+      field.name,
+      record?.[field.name] == null
+        ? (field.initial ?? '')
+        : String(record[field.name]),
+    ])
+  )
+);
   const [options, setOptions] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -66,8 +76,11 @@ export default function TaskSectionModal({ section, onClose, onSaved }) {
     setSaving(true);
     setError('');
     try {
-      const { record } = await createTaskSection(section, body);
-      onSaved(record);
+     const result = record
+  ? await updateTaskSection(section, record[config.id], body)
+  : await createTaskSection(section, body);
+
+onSaved(result.record);
     } catch (err) {
       setError(err.errors ? Object.values(err.errors).join(' ') : err.message);
     } finally {
@@ -83,7 +96,9 @@ export default function TaskSectionModal({ section, onClose, onSaved }) {
       onCancel={(event) => { event.preventDefault(); if (!savingRef.current) onClose(); }}>
       <div className="modal-content">
         <div className="modal-header p-3 border-bottom">
-          <h4 id="section-modal-title" className="modal-title h5">Add {config.label}</h4>
+          <h4 id="section-modal-title" className="modal-title h5">
+  {record ? 'Edit' : 'Add'} {config.label}
+</h4>
           <button type="button" className="btn-close" aria-label="Close" disabled={saving} onClick={onClose} />
         </div>
         {!options && !loadError && <p className="p-3" role="status">Loading form options...</p>}
@@ -119,7 +134,7 @@ export default function TaskSectionModal({ section, onClose, onSaved }) {
           </div>
           <div className="modal-footer p-3 border-top gap-2">
             <button type="button" className="btn btn-outline-secondary" disabled={saving} onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-success" disabled={saving || missingOptions}>{saving ? 'Saving...' : `Save ${config.label}`}</button>
+            <button type="submit" className="btn btn-success" disabled={saving || missingOptions}>{saving ? 'Saving...' : record ? 'Save Changes' : `Save ${config.label}`}</button>
           </div>
         </form>}
       </div>

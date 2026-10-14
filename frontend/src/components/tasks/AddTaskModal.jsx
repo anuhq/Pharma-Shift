@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createTask, getTaskOptions } from '../../services/taskApi';
 
+const pastDateMessage = 'Task date cannot be before today. Select today or a future date.';
+const todayInColombo = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(new Date());
+
 function AddTaskModal({ onClose, onSaved }) {
   const dialogRef = useRef(null);
   const savingRef = useRef(false);
@@ -13,6 +16,8 @@ function AddTaskModal({ onClose, onSaved }) {
     template_id: '', title: '', description: '',
     assigneeId: '', assigned_date: '', due_time: '', priority: 'Medium',
   });
+  const today = todayInColombo();
+  const dateError = values.assigned_date && values.assigned_date < today ? pastDateMessage : '';
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -37,6 +42,7 @@ function AddTaskModal({ onClose, onSaved }) {
 
   function change(event) {
     const { name, value } = event.target;
+    if (name === 'assigned_date') setError('');
     setValues((current) => {
       const next = { ...current, [name]: value };
       if (name === 'template_id' && value) {
@@ -49,6 +55,11 @@ function AddTaskModal({ onClose, onSaved }) {
   async function submit(event) {
     event.preventDefault();
     if (savingRef.current) return;
+    if (values.assigned_date && values.assigned_date < todayInColombo()) {
+      setError(pastDateMessage);
+      event.currentTarget.elements.namedItem('assigned_date')?.focus();
+      return;
+    }
     if (!values.template_id && !values.title.trim()) {
       setError('Enter a task name.');
       return;
@@ -125,7 +136,10 @@ function AddTaskModal({ onClose, onSaved }) {
                 </div>
                 <div className="col-md-6">
                   <label htmlFor="task-date" className="form-label">Date</label>
-                  <input id="task-date" name="assigned_date" type="date" min="2020-01-01"max="2100-12-31" className="form-control" required value={values.assigned_date} onChange={change} />
+                  <input id="task-date" name="assigned_date" type="date" min={today} max="2100-12-31"
+                    className={`form-control${dateError ? ' is-invalid' : ''}`} required value={values.assigned_date} onChange={change}
+                    aria-invalid={Boolean(dateError)} aria-describedby={dateError ? 'task-date-error' : undefined} />
+                  {dateError && <div id="task-date-error" className="invalid-feedback" role="alert">{dateError}</div>}
                 </div>
                 <div className="col-md-6">
                   <label htmlFor="task-due-time" className="form-label">Due time (optional)</label>

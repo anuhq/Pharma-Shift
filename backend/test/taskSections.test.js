@@ -95,7 +95,8 @@ test('MySQL API creates and reads linked checklists, templates and handovers', {
     assert.ok(updated.templates.some((item) => item.template_id === template.template_id));
     assert.ok(updated.checklists.some((item) => item.checklist_id === checklist.checklist_id));
     const assignmentResponse = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      template_id: template.template_id, employee_id: options.users[0].employee_id, assigned_date: '2026-09-12', priority: 'Medium',
+      template_id: template.template_id, employee_id: options.users[0].employee_id,
+      assigned_date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(new Date()), priority: 'Medium',
     }) });
     assert.equal(assignmentResponse.status, 201);
     const { task: assignment } = await assignmentResponse.json();

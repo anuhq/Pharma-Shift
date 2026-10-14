@@ -53,4 +53,45 @@ function validateSection(section, body) {
   return { value, errors };
 }
 
-module.exports = { validateSection };
+function validateHandoverEdit(body, employeeId) {
+  const input =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? body
+      : {};
+
+  const allowedFields = [
+    'to_shift_type_id',
+    'handover_date',
+    'notes',
+    'priority',
+  ];
+
+  const { value, errors } = validateSection('handovers', {
+    ...input,
+    employee_id: employeeId,
+  });
+
+  if (
+    Object.keys(input).some(
+      (field) => !allowedFields.includes(field)
+    )
+  ) {
+    errors.fields =
+      'Only next shift, date, notes and priority can be edited.';
+  }
+
+  return {
+    errors,
+    value: {
+      to_shift_type_id: value.to_shift_type_id,
+      handover_date: value.handover_date,
+      notes: value.notes,
+      priority: value.priority,
+    },
+  };
+}
+
+module.exports = {
+  validateSection,
+  validateHandoverEdit,
+};

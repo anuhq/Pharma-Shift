@@ -24,6 +24,16 @@ export const getTasks = (signal) => request('', { signal });
 export const updateTaskAssignee = (id, userId) => request(`/${id}/assignee`, {
   method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId }),
 });
+export const updateTaskAssignment = (id, changes) =>
+  request(`/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  export const cancelTaskAssignment = (id) =>
+  request(`/${id}/cancel`, {
+    method: 'PATCH',
+  });
 export const updateTaskProgress = (id, progress) => request(`/${id}/progress`, {
   method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(progress),
 });
@@ -31,9 +41,33 @@ export const getTaskSection = (section, signal) => request(`/${section}`, { sign
 export const createTaskSection = (section, record) => request(`/${section}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record),
 });
+export const updateTaskSection = (section, id, record) =>
+  request(`/${section}/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record),
+  });
+export const deactivateTaskSection = (section, id) =>
+  request(`/${section}/${id}`, {
+    method: 'DELETE',
+  });
 export const getTaskOptions = (signal) => request('/options', { signal });
 export const createTask = (task) => request('', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(task),
 });
 export const getHandoverOptions = (signal) =>
   request('/handover-options', { signal });
+export const completeTaskHandover = (id) =>
+  request(`/handovers/${id}/complete`, {
+    method: 'PATCH',
+  });
+
+export const getTaskReportSummary = (signal) =>
+  request('/reports/summary', { signal });
+
+export const transferTaskAssignment = (id, transferDetails) =>
+  request(`/${id}/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(transferDetails),
+  });

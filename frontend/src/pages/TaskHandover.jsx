@@ -2,8 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import AddTaskModal from '../components/tasks/AddTaskModal';
 import TaskSectionRecords from '../components/tasks/TaskSectionRecords';
 import TaskProgressModal from '../components/tasks/TaskProgressModal';
+import EditTaskModal from '../components/tasks/EditTaskModal';
 import TaskBadge from '../components/tasks/TaskBadge';
-import { getTasks, getTaskOptions, updateTaskAssignee } from '../services/taskApi';
+import TaskReports from '../components/tasks/TaskReports';
+import TransferTaskModal from '../components/tasks/TransferTaskModal';
+import {
+  getTasks,
+  getTaskOptions,
+  updateTaskAssignee,
+  cancelTaskAssignment,
+} from '../services/taskApi';
 import { useAuth } from '../auth/useAuth';
 const sections = [
   {
@@ -45,8 +53,12 @@ function TaskHandover() {
   const [success, setSuccess] = useState('');
   const [reload, setReload] = useState(0);
   const [progressTask, setProgressTask] = useState(null);
+  const [editTask, setEditTask] = useState(null);
+  const [transferTask, setTransferTask] = useState(null);
   const [users, setUsers] = useState([]);
   const [savingAssignee, setSavingAssignee] = useState(null);
+  const [cancellingTaskId, setCancellingTaskId] = useState(null);
+const cancellingTaskRef = useRef(false);
   const [assignmentError, setAssignmentError] = useState('');
   const savingAssigneeRef = useRef(false);
   const { user } = useAuth();
@@ -122,10 +134,46 @@ function TaskHandover() {
 
   function handleSaved(task) {
     setTaskRecords((records) => [task, ...records].sort((a, b) =>
-      b.assigned_date.localeCompare(a.assigned_date) || b.assignment_id - a.assignment_id));
+      b.assignment_id - a.assignment_id));
     setSuccess('Task "' + task.title + '" saved successfully.');
     setShowTaskModal(false);
+    refreshTasks();
   }
+  async function cancelTask(record) {
+  if (cancellingTaskRef.current) return;
+
+  const confirmed = window.confirm(
+    `Are you sure you want to cancel "${record.title}"? The task will remain in history.`
+  );
+
+  if (!confirmed) return;
+
+  cancellingTaskRef.current = true;
+  setCancellingTaskId(record.assignment_id);
+  setAssignmentError('');
+  setSuccess('');
+
+  try {
+    const { task: updated } = await cancelTaskAssignment(
+      record.assignment_id
+    );
+
+    setTaskRecords((records) =>
+      records.map((item) =>
+        item.assignment_id === updated.assignment_id
+          ? updated
+          : item
+      )
+    );
+
+    setSuccess(`Task "${updated.title}" cancelled successfully.`);
+  } catch (error) {
+    setAssignmentError(error.message);
+  } finally {
+    cancellingTaskRef.current = false;
+    setCancellingTaskId(null);
+  }
+}
 
   return (
     <div>
@@ -156,11 +204,33 @@ function TaskHandover() {
           >
             {section.title}
           </button>
+
         ))}
+
+        {isManager && (
+          <button
+            type="button"
+            className={
+              activeSectionId === 'reports'
+                ? 'btn btn-primary'
+                : 'btn btn-outline-primary'
+            }
+            aria-pressed={activeSectionId === 'reports'}
+            onClick={() => setActiveSectionId('reports')}
+          >
+            Reports
+          </button>
+        )}
       </div>
 
-      {activeSectionId !== 'assignments' ? <TaskSectionRecords key={activeSectionId} section={activeSection} /> : <section
-        id="task-handover-content"
+
+
+{activeSectionId === 'reports'
+  ? (isManager ? <TaskReports /> : null)
+  : activeSectionId !== 'assignments'
+    ? <TaskSectionRecords key={activeSectionId} section={activeSection} />
+    : <section
+
         className="card border-0 shadow-sm"
         aria-labelledby="task-handover-section-title"
       >
@@ -217,7 +287,27 @@ function TaskHandover() {
                 {activeSectionId === 'assignments' && taskRecords.length > 0 ? (
                   taskRecords.map((record) => (
                     <tr key={record.assignment_id}>
-                      <td className="task-table-text"><div>{record.title}</div>{record.description && <div className="small text-secondary mt-1">{record.description}</div>}</td>
+
+<td className="task-table-text">
+  <div>{record.title}</div>
+
+  {record.description && (
+    <div className="small text-secondary mt-1">
+      {record.description}
+    </div>
+  )}
+
+  <div className="small text-secondary mt-1">
+    Task #{record.assignment_id}
+  </div>
+
+  {record.transferred_from_assignment_id != null && (
+    <div className="small text-primary mt-1">
+      Transferred from Task #{record.transferred_from_assignment_id}
+    </div>
+  )}
+</td>
+
                      <td>
                         {isManager ? (
                           <>
@@ -231,11 +321,13 @@ function TaskHandover() {
                                     assignedUser.employee_id === record.employee_id,
                                 )?.user_id || ''
                               }
-                              disabled={
-                                loading ||
-                                savingAssignee !== null ||
-                                !users.length
-                              }
+                             disabled={
+                              loading ||
+                            savingAssignee !== null ||
+                              cancellingTaskId !== null ||
+                              !users.length ||
+                              ['Completed', 'Cancelled', 'Transferred'].includes(record.status)
+}
                               onChange={(event) =>
                                 changeAssignee(record, event.target.value)
                               }
@@ -275,9 +367,87 @@ function TaskHandover() {
                       <td><TaskBadge value={record.priority} /></td>
                       <td><TaskBadge value={record.status} /></td>
                       <td className="task-table-text">{record.completion_note || '—'}</td>
-                      <td><button type="button" className="btn btn-outline-primary btn-sm" disabled={loading || savingAssignee !== null}
-                        aria-label={`Update progress for ${record.title}`}
-                        onClick={() => { setSuccess(''); setProgressTask(record); }}>Update Progress</button></td>
+                      <td>
+  <div className="d-flex flex-nowrap align-items-center gap-2">
+    {isManager && (
+      <button
+        type="button"
+        className="btn btn-outline-secondary btn-sm"
+        disabled={
+          loading ||
+          savingAssignee !== null ||
+          cancellingTaskId !== null ||
+          ['Completed', 'Cancelled', 'Transferred'].includes(record.status)
+        }
+
+
+        aria-label={`Edit task ${record.title}`}
+        onClick={() => {
+          setSuccess('');
+          setAssignmentError('');
+          setEditTask(record);
+        }}
+      >
+        Edit
+      </button>
+    )}
+
+    {isManager &&
+      ['Assigned', 'In Progress'].includes(record.status) && (
+        <button
+          type="button"
+          className="btn btn-outline-primary btn-sm"
+          disabled={
+            loading ||
+            savingAssignee !== null ||
+            cancellingTaskId !== null
+          }
+          onClick={() => {
+            setSuccess('');
+            setAssignmentError('');
+            setTransferTask(record);
+          }}
+        >
+          Transfer
+        </button>
+      )}
+    {isManager && (
+  <button
+    type="button"
+    className="btn btn-outline-danger btn-sm"
+    disabled={
+      loading ||
+      savingAssignee !== null ||
+      cancellingTaskId !== null ||
+      record.status === 'Completed' ||
+      ['Cancelled', 'Transferred'].includes(record.status)
+    }
+    onClick={() => cancelTask(record)}
+  >
+    {cancellingTaskId === record.assignment_id
+      ? 'Cancelling...'
+      : 'Cancel'}
+  </button>
+)}
+
+    <button
+      type="button"
+      className="btn btn-outline-primary btn-sm"
+disabled={
+  loading ||
+  savingAssignee !== null ||
+  cancellingTaskId !== null ||
+  ['Cancelled', 'Transferred'].includes(record.status)
+}      aria-label={`Update progress for ${record.title}`}
+      onClick={() => {
+        setSuccess('');
+        setProgressTask(record);
+      }}
+    >
+      Update Progress
+    </button>
+  </div>
+</td>
                     </tr>
                   ))
                 ) : (
@@ -295,6 +465,37 @@ function TaskHandover() {
           </div>
         </div>
       </section>}
+        {editTask && (
+  <EditTaskModal
+    task={editTask}
+    onClose={() => setEditTask(null)}
+    onSaved={(updated) => {
+      setTaskRecords((records) =>
+        records.map((record) =>
+          record.assignment_id === updated.assignment_id
+            ? updated
+            : record
+        )
+      );
+
+      setSuccess(`Task "${updated.title}" updated successfully.`);
+      setEditTask(null);
+      refreshTasks();
+    }}
+  />
+)}
+
+{transferTask && (
+  <TransferTaskModal
+    task={transferTask}
+    onClose={() => setTransferTask(null)}
+    onTransferred={({ original }) => {
+      setTransferTask(null);
+      setSuccess(`Task "${original.title}" transferred successfully.`);
+      refreshTasks();
+    }}
+  />
+)}
 
       {showTaskModal && <AddTaskModal onClose={() => setShowTaskModal(false)} onSaved={handleSaved} />}
       {progressTask && <TaskProgressModal task={progressTask} onClose={() => setProgressTask(null)} onSaved={(updated) => {
