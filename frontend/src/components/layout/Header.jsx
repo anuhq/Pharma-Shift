@@ -1,3 +1,4 @@
+
 import { useAuth } from '../../auth/useAuth';
 
 function Header({ onMenuClick }) {
@@ -16,11 +17,29 @@ function Header({ onMenuClick }) {
             Menu
           </button>
 
-          <div>
-            <h1 className="app-title mb-0">PharmaShift</h1>
-            <p className="app-subtitle mb-0">
-              Pharmacy Workforce and Daily Operations Management System
-            </p>
+          <div className="d-flex align-items-center gap-2 gap-md-3">
+            <img
+              src="/digana-pharmacy-logo.jpeg"
+              alt="Digana Pharmacy logo"
+              className="app-logo"
+              width="56"
+              height="56"
+            />
+
+            <div>
+              <h1 className="app-title mb-0">
+                PharmaShift
+              </h1>
+
+              <p className="app-subtitle mb-0">
+                <span className="app-pharmacy-name">
+                  Digana Pharmacy
+                </span>
+                <span className="app-tagline">
+                  {' | Workforce and Daily Operations Management System'}
+                </span>
+              </p>
+            </div>
           </div>
         </div>
 
