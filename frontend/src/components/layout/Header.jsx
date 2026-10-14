@@ -32,7 +32,12 @@ function Header({ onMenuClick }) {
               </h1>
 
               <p className="app-subtitle mb-0">
-                Pharmacy Workforce and Daily Operations Management System
+                <span className="app-pharmacy-name">
+                  Digana Pharmacy
+                </span>
+                <span className="app-tagline">
+                  {' | Workforce and Daily Operations Management System'}
+                </span>
               </p>
             </div>
           </div>

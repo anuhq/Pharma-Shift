@@ -1,11 +1,13 @@
 
 import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/useAuth';
 
 const modules = [
   {
     title: 'Employee & Shift Management',
     description: 'Manage employees, shifts and staff rosters.',
     path: '/employee-shift',
+    buttonText: 'View Employees & Shifts',
     icon: 'employees',
     iconColor: '#2563eb',
     iconBackground: '#e8f1ff',
@@ -14,6 +16,7 @@ const modules = [
     title: 'Attendance, Leave & Overtime',
     description: 'Track attendance, leave requests and overtime.',
     path: '/attendance-leave-overtime',
+    buttonText: 'View Attendance & Leave',
     icon: 'attendance',
     iconColor: '#0d9488',
     iconBackground: '#e5f7f2',
@@ -22,6 +25,7 @@ const modules = [
     title: 'Daily Task & Shift Handover',
     description: 'Organise tasks, checklists and shift handovers.',
     path: '/task-handover',
+    buttonText: 'View Tasks & Handovers',
     icon: 'tasks',
     iconColor: '#d97706',
     iconBackground: '#fff2d8',
@@ -30,6 +34,7 @@ const modules = [
     title: 'Staff Incident & Corrective Action',
     description: 'Record incidents and track corrective actions.',
     path: '/incident-corrective-action',
+    buttonText: 'View Incidents & Actions',
     icon: 'incidents',
     iconColor: '#dc2626',
     iconBackground: '#fde8e8',
@@ -92,13 +97,17 @@ function ModuleIcon({ type }) {
 }
 
 function Dashboard() {
+  const { user } = useAuth();
+  const employeeName = user?.fullName || user?.username || 'Team Member';
+
   return (
     <div>
       <div className="mb-4">
         <h2 className="mb-1">Dashboard</h2>
 
         <p className="mb-0">
-          Welcome to PharmaShift. Select a module to continue.
+          Welcome, {employeeName}! Select a module to continue
+          your work at Digana Pharmacy.
         </p>
       </div>
 
@@ -135,7 +144,7 @@ function Dashboard() {
                     to={module.path}
                     className="btn btn-outline-primary"
                   >
-                    Open Module
+                    {module.buttonText}
                   </Link>
                 </div>
               </div>
