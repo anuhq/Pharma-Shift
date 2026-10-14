@@ -28,6 +28,43 @@ function isValidRosterDate(value) {
   return day >= 1 && day <= daysInMonth;
 }
 
+// Lock an employee during roster changes
+async function lockEmployee(connection, employeeId) {
+  await connection.query(
+    'SELECT employee_id FROM employee WHERE employee_id = ? FOR UPDATE',
+    [employeeId]
+  );
+}
+
+// Check Approved leave before assigning a shift
+async function hasApprovedLeave(connection, employeeId, shiftTypeId, shiftDate) {
+  const [leaveRows] = await connection.query(
+    `
+      SELECT leave_record.leave_request_id
+      FROM leave_request leave_record
+      INNER JOIN shift_type target_shift
+        ON target_shift.shift_type_id = ?
+      WHERE leave_record.employee_id = ?
+        AND leave_record.status = 'Approved'
+        AND leave_record.start_date <=
+          DATE_ADD(
+            ?,
+            INTERVAL IF(
+              target_shift.end_time < target_shift.start_time,
+              1,
+              0
+            ) DAY
+          )
+        AND leave_record.end_date >= ?
+      LIMIT 1
+      FOR UPDATE
+    `,
+    [shiftTypeId, employeeId, shiftDate, shiftDate]
+  );
+
+  return leaveRows.length > 0;
+}
+
 // Every roster request requires a login
 router.use(requireAuth);
 
@@ -356,6 +393,8 @@ router.post('/:id/replace', async (req, res) => {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
+    await lockEmployee(connection, candidateId);
+
     // Lock the original assignment so it cannot be replaced twice.
     const [originalRows] = await connection.query(
       `
@@ -682,6 +721,7 @@ router.post('/', async (req, res) => {
   try {
     connection = await pool.getConnection();
     await connection.beginTransaction();
+    await lockEmployee(connection, employeeNumber);
 
     // Lock the employee and shift type during scheduling.
     // Other roster requests for this employee must wait.
@@ -769,6 +809,23 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Prevent assignment during Approved leave
+      const leaveConflict = await hasApprovedLeave(
+        connection,
+        employeeNumber,
+        shiftTypeNumber,
+        shiftDate
+      );
+
+      if (leaveConflict) {
+        await connection.rollback();
+
+        return res.status(409).json({
+          message: 'This employee has Approved leave during this shift.',
+        });
+      }
+
+
     // Insert using the same locked database transaction.
     const [result] = await connection.query(
       `
@@ -823,6 +880,15 @@ router.post('/', async (req, res) => {
           'The selected employee or shift type does not exist.',
       });
     }
+
+    if (
+        error.code === 'ER_LOCK_DEADLOCK' ||
+        error.code === 'ER_LOCK_WAIT_TIMEOUT'
+      ) {
+        return res.status(409).json({
+          message: 'Another roster change is in progress. Please try again.',
+        });
+      }
 
     console.error('Roster create error:', error.code);
 
@@ -883,6 +949,7 @@ router.put('/:id', async (req, res) => {
   try {
     connection = await pool.getConnection();
     await connection.beginTransaction();
+    await lockEmployee(connection, employeeNumber);
 
     // Lock the assignment being edited
        const [existing] = await connection.query(
@@ -1006,6 +1073,22 @@ router.put('/:id', async (req, res) => {
       });
     }
 
+    // Prevent assignment during Approved leave
+      const leaveConflict = await hasApprovedLeave(
+        connection,
+        employeeNumber,
+        shiftTypeNumber,
+        shiftDate
+      );
+
+      if (leaveConflict) {
+        await connection.rollback();
+
+        return res.status(409).json({
+          message: 'This employee has Approved leave during this shift.',
+        });
+      }
+
     // Update the scheduled assignment
     await connection.query(
       `
@@ -1057,6 +1140,15 @@ router.put('/:id', async (req, res) => {
         console.error('Roster rollback error:', rollbackError.code);
       }
     }
+
+    if (
+        error.code === 'ER_LOCK_DEADLOCK' ||
+        error.code === 'ER_LOCK_WAIT_TIMEOUT'
+      ) {
+        return res.status(409).json({
+          message: 'Another roster change is in progress. Please try again.',
+        });
+      }
 
     console.error('Roster update error:', error.code);
 
