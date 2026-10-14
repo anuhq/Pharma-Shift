@@ -36,9 +36,11 @@ function validateCategory(body) {
 // Read all categories
 router.get('/', async (req, res) => {
   const [categories] = await pool.execute(
-    `SELECT category_id, category_name, severity_level, description
-     FROM incident_category
-     ORDER BY category_name, category_id`
+    `SELECT c.category_id, c.category_name, c.severity_level, c.description,
+            (SELECT COUNT(*) FROM staff_incident AS i
+             WHERE i.category_id = c.category_id) AS incident_count
+     FROM incident_category AS c
+     ORDER BY c.category_name, c.category_id`
   );
 
   res.status(200).json({ categories });
@@ -110,6 +112,55 @@ router.put('/:id', async (req, res) => {
   }
 
   res.status(200).json({ category: rows[0] });
+});
+
+// A linked category must never be removed: preserve incident history.
+router.delete('/:id', async (req, res) => {
+  const categoryId = Number(req.params.id);
+
+  if (!Number.isSafeInteger(categoryId) || categoryId < 1) {
+    return res.status(400).json({ message: 'Invalid category ID.' });
+  }
+
+  try {
+    // A conditional DELETE prevents removing a category used by an incident.
+    // The database foreign key also protects against concurrent changes.
+    const [result] = await pool.execute(
+      `DELETE FROM incident_category
+       WHERE category_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM staff_incident WHERE category_id = ?
+         )`,
+      [categoryId, categoryId]
+    );
+
+    if (result.affectedRows === 1) {
+      return res.json({ message: 'Category deleted successfully.' });
+    }
+
+    const [existing] = await pool.execute(
+      'SELECT category_id FROM incident_category WHERE category_id = ?',
+      [categoryId]
+    );
+
+    if (!existing.length) {
+      return res.status(404).json({ message: 'Category not found.' });
+    }
+
+    return res.status(409).json({
+      message: 'Cannot delete this category because incident records use it.',
+    });
+  } catch (error) {
+    if (
+      error.code === 'ER_ROW_IS_REFERENCED_2' ||
+      error.code === 'ER_ROW_IS_REFERENCED'
+    ) {
+      return res.status(409).json({
+        message: 'Cannot delete this category because related records use it.',
+      });
+    }
+    throw error;
+  }
 });
 
 module.exports = router;

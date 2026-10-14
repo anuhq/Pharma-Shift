@@ -7,7 +7,80 @@ const {
 
 const router = express.Router();
 
-router.use(requireAuth, requireRole('Owner/Manager'));
+// Staff may only see and update corrective actions assigned to their own
+// authenticated employee record; all other endpoints remain manager-only.
+router.use(requireAuth);
+
+const staffPermission = requireRole('Pharmacist', 'Pharmacy Assistant');
+
+router.get('/mine', staffPermission, async (req, res, next) => {
+  try {
+    const [actions] = await pool.execute(
+      `SELECT ca.action_id, ca.incident_id, c.category_name,
+              DATE_FORMAT(i.incident_date, '%Y-%m-%d') AS incident_date,
+              ca.action_description,
+              DATE_FORMAT(ca.due_date, '%Y-%m-%d') AS due_date,
+              ca.status, ca.staff_completion_feedback,
+              DATE_FORMAT(ca.staff_feedback_submitted_at, '%Y-%m-%d %H:%i')
+                AS staff_feedback_submitted_at
+       FROM corrective_action ca
+       JOIN staff_incident i ON i.incident_id = ca.incident_id
+       JOIN incident_category c ON c.category_id = i.category_id
+       WHERE ca.assigned_employee_id = ?
+       ORDER BY ca.due_date ASC, ca.action_id DESC`,
+      [req.currentUser.employee_id],
+    );
+
+    return res.json({ actions });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/:id/completion-feedback', staffPermission, async (req, res, next) => {
+  const actionId = Number(req.params.id);
+  const feedback = req.body?.feedback;
+
+  if (!Number.isSafeInteger(actionId) || actionId < 1) {
+    return res.status(400).json({ message: 'Invalid corrective action ID.' });
+  }
+
+  if (typeof feedback !== 'string' || !feedback.trim() || feedback.trim().length > 500) {
+    return res.status(400).json({
+      message: 'Enter completion feedback between 1 and 500 characters.',
+    });
+  }
+
+  try {
+    // Ownership, editable status and open incident are checked inside the
+    // UPDATE itself, protecting against changes between reading and saving.
+    const [result] = await pool.execute(
+      `UPDATE corrective_action ca
+       JOIN staff_incident i ON i.incident_id = ca.incident_id
+       SET ca.staff_completion_feedback = ?,
+           ca.staff_feedback_submitted_at = UTC_TIMESTAMP()
+       WHERE ca.action_id = ?
+         AND ca.assigned_employee_id = ?
+         AND ca.status IN ('Pending', 'In Progress')
+         AND i.status <> 'Closed'`,
+      [feedback.trim(), actionId, req.currentUser.employee_id],
+    );
+
+    if (!result.affectedRows) {
+      return res.status(404).json({
+        message: 'No eligible corrective action is assigned to your account.',
+      });
+    }
+
+    // A staff report never marks the action Completed. Manager verification
+    // and the existing manager completion-date rules remain authoritative.
+    return res.json({ message: 'Feedback sent to the manager for review.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.use(requireRole('Owner/Manager'));
 
 const ACTION_STATUSES = [
   'Pending',
@@ -108,6 +181,9 @@ router.get('/', async (req, res, next) => {
               ca.follow_up_details,
               DATE_FORMAT(ca.completed_date, '%Y-%m-%d')
                 AS completed_date,
+              ca.staff_completion_feedback,
+              DATE_FORMAT(ca.staff_feedback_submitted_at, '%Y-%m-%d %H:%i')
+                AS staff_feedback_submitted_at,
               i.status AS incident_status
        FROM corrective_action ca
        JOIN staff_incident i
@@ -209,7 +285,8 @@ async function saveAction(req, res, next, isEditing) {
 
     if (isEditing) {
       const [existing] = await connection.execute(
-        `SELECT action_id, incident_id
+        `SELECT action_id, incident_id, assigned_employee_id,
+                staff_completion_feedback, staff_feedback_submitted_at
          FROM corrective_action
          WHERE action_id = ?
          FOR UPDATE`,
@@ -234,7 +311,9 @@ async function saveAction(req, res, next, isEditing) {
              due_date = ?,
              status = ?,
              follow_up_details = ?,
-             completed_date = ?
+             completed_date = ?,
+             staff_completion_feedback = ?,
+             staff_feedback_submitted_at = ?
          WHERE action_id = ?`,
         [
           employeeId,
@@ -243,6 +322,11 @@ async function saveAction(req, res, next, isEditing) {
           req.body.status,
           cleanOptionalText(req.body.follow_up_details),
           completedDate,
+          // Prevent exposing another employee's feedback after reassignment.
+          Number(existing[0].assigned_employee_id) === employeeId
+            ? existing[0].staff_completion_feedback : null,
+          Number(existing[0].assigned_employee_id) === employeeId
+            ? existing[0].staff_feedback_submitted_at : null,
           actionId,
         ],
       );
