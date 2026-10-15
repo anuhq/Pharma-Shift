@@ -229,6 +229,104 @@ export default function EmployeeShiftReports() {
     downloadCsv(filename, headers, rows);
   }
 
+  function handlePrint() {
+  if (!isEmployeeReport && invalidDateRange) return;
+
+  const printWindow = window.open('', '_blank');
+
+  if (!printWindow) {
+    setError('Please allow pop-ups to print the report.');
+    return;
+  }
+
+  const escapeHtml = (value) =>
+    String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[char]));
+
+  const reportTitle = isEmployeeReport
+    ? 'Employee Report'
+    : 'Work Roster Report';
+
+  const headerHtml = headers
+    .map((header) => `<th>${escapeHtml(header)}</th>`)
+    .join('');
+
+  const rowHtml = rows.length
+    ? rows.map((row) =>
+        `<tr>${row.map((value) =>
+          `<td>${escapeHtml(value)}</td>`
+        ).join('')}</tr>`
+      ).join('')
+    : `<tr><td colspan="${headers.length}">
+         No records match your filters.
+       </td></tr>`;
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>PharmaShift - ${reportTitle}</title>
+        <style>
+          @page { size: A4 landscape; margin: 15mm; }
+
+          body {
+            font-family: Arial, sans-serif;
+            color: #222;
+            padding: 15px;
+          }
+
+          h1, h2 { text-align: center; }
+          h1 { margin-bottom: 5px; }
+          h2 { margin-top: 0; }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 12px;
+          }
+
+          th, td {
+            border: 1px solid #888;
+            padding: 8px;
+            text-align: left;
+          }
+
+          th { background: #e8eef7; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; }
+
+          @media print {
+            #print-report { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <button id="print-report">Print / Save as PDF</button>
+        <h1>PharmaShift</h1>
+        <h2>${reportTitle}</h2>
+        <p>Generated: ${escapeHtml(new Date().toLocaleString())}</p>
+        <p>Total Records: ${rows.length}</p>
+        <table>
+          <thead><tr>${headerHtml}</tr></thead>
+          <tbody>${rowHtml}</tbody>
+        </table>
+      </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+
+  printWindow.document
+    .getElementById('print-report')
+    .addEventListener('click', () => printWindow.print());
+}
+
   return (
     <section className="card border-0 shadow-sm">
       <div className="card-body">
@@ -428,6 +526,14 @@ export default function EmployeeShiftReports() {
                   disabled={rows.length === 0 || invalidDateRange}
                 >
                   Download CSV
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline-primary"
+                  onClick={handlePrint}
+                  disabled={loading || (!isEmployeeReport && invalidDateRange)}
+                >
+                  Print / Save as PDF
                 </button>
               </div>
             </div>
