@@ -38,9 +38,23 @@ function validShiftTimes(record) {
 function formatMinutes(value) {
   const minutes = Number(value);
 
-  return Number.isFinite(minutes)
-    ? `${minutes.toFixed(1)} min`
-    : '-';
+  if (!Number.isFinite(minutes)) {
+    return '-';
+  }
+
+  const totalMinutes = Math.round(minutes);
+  const hours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+
+  if (hours === 0) {
+    return `${remainingMinutes}min`;
+  }
+
+  if (remainingMinutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${remainingMinutes}min`;
 }
 
 function ShiftDetails({ record }) {
