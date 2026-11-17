@@ -188,6 +188,13 @@ async function handleDelete(employee) {
       return;
     }
 
+    const contactNo = form.contact_no.trim();
+
+    if (contactNo && !/^0[0-9]{9}$/.test(contactNo)) {
+      setFormError('Contact number must be exactly 10 digits and start with 0.');
+      return;
+    }
+
     savingRef.current = true;
     setSaving(true);
     setFormError('');
@@ -360,7 +367,6 @@ async function handleDelete(employee) {
                           className="form-control"
                           value={form.contact_no}
                           onChange={handleChange}
-                          maxLength={20}
                         />
                       </div>
 

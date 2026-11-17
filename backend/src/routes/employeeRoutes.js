@@ -66,8 +66,10 @@ function validateEmployee(body, isCreate = false) {
 
     contactNo = body.contact_no.trim() || null;
 
-    if (contactNo !== null && contactNo.length > 20) {
-      return { error: 'Contact number must not exceed 20 characters.' };
+    if (contactNo !== null && !/^0[0-9]{9}$/.test(contactNo)) {
+      return {
+        error: 'Contact number must be exactly 10 digits and start with 0.',
+      };
     }
   }
 
